@@ -155,3 +155,135 @@ To prevent internal team visits from skewing analytics data:
 - [ ] Goal triggers record corresponding events in dashboard.
 - [ ] UTM acquisition tags appear correctly under **Sources & Campaigns**.
 - [ ] Both desktop and mobile form factors record appropriate device/browser classifications.
+
+---
+
+## 9. Production Case Study: Smart Driving School (`smart-drivingschool.co.uk`)
+
+### Configuration Overview
+- **Domain:** `smart-drivingschool.co.uk`
+- **Site Name:** Smart Driving School
+- **Timezone:** `Europe/London`
+- **Currency:** `GBP`
+- **Site ID:** `712t666h1x2v0306`
+- **Platform:** WordPress 7.1 (Apache, `udrive` / `udrive-child` theme, Elementor, Contact Form 7, Autoptimize)
+
+### Production Tracking Snippet
+```html
+<!-- Vysta Analytics Tracker -->
+<script defer data-website-id="712t666h1x2v0306" src="https://vysta-production.vysta.workers.dev/js/script.js"></script>
+
+<!-- Smart Driving School Automated Goal Tracking Companion -->
+<script>
+(function() {
+  function getVysta() {
+    return window.minilytics || function() { (window.minilytics.q = window.minilytics.q || []).push(arguments); };
+  }
+
+  // 1. Lead Form Submissions (Contact Form 7: #wpcf7-f2028-p10-o1, #wpcf7-f2082-p566-o1, #wpcf7-f423)
+  document.addEventListener('wpcf7mailsent', function(e) {
+    var v = getVysta();
+    var formId = e.detail ? e.detail.contactFormId : (e.target ? e.target.id : 'form');
+    v('goal', 'lead_form_submit', { form_id: String(formId) });
+  }, false);
+
+  // 2. Click-based conversion goals (Delegated click listener)
+  document.addEventListener('click', function(e) {
+    var a = e.target && e.target.closest ? e.target.closest('a[href]') : null;
+    if (!a) return;
+    var href = a.getAttribute('href') || '';
+    var text = (a.innerText || a.textContent || '').trim().toLowerCase();
+    var v = getVysta();
+
+    // WhatsApp Clicks
+    if (/wa\.me|api\.whatsapp\.com/i.test(href) || a.closest('.chaty-widget') || a.closest('[data-channel="whatsapp"]')) {
+      if (text.includes('tester') || href.includes('tester')) {
+        v('goal', 'tester_lesson_click', { channel: 'whatsapp' });
+      }
+      v('goal', 'contact_whatsapp', { href: href.slice(0, 100) });
+      return;
+    }
+
+    // Telephone Call Clicks
+    if (/^tel:/i.test(href)) {
+      if (text.includes('tester')) {
+        v('goal', 'tester_lesson_click', { channel: 'phone' });
+      }
+      v('goal', 'contact_phone', { phone: href.replace(/^tel:/i, '').trim() });
+      return;
+    }
+
+    // Tester Lesson Dedicated CTA Clicks
+    if (text.includes('tester lesson') || href.includes('first-driving-lesson')) {
+      v('goal', 'tester_lesson_click', { text: text.slice(0, 50) });
+      return;
+    }
+
+    // Booking Start CTA Clicks ("Book Now" links leading to /contact/ or enquiry form)
+    if (text === 'book now' || text.includes('book your') || href.includes('/contact/')) {
+      if (text.includes('tester')) {
+        v('goal', 'tester_lesson_click', { type: 'book_tester' });
+      } else if (text === 'book now' || text.includes('book')) {
+        v('goal', 'booking_start', { text: text.slice(0, 50) });
+      }
+    }
+  }, true);
+})();
+</script>
+```
+
+### Installation Method in WordPress
+Add the combined snippet into `wp-content/themes/udrive-child/functions.php`:
+```php
+add_action('wp_head', function () {
+    ?>
+    <script defer data-website-id="712t666h1x2v0306" src="https://vysta-production.vysta.workers.dev/js/script.js"></script>
+    <script>
+    (function() {
+      function getVysta() {
+        return window.minilytics || function() { (window.minilytics.q = window.minilytics.q || []).push(arguments); };
+      }
+      document.addEventListener('wpcf7mailsent', function(e) {
+        var v = getVysta();
+        var formId = e.detail ? e.detail.contactFormId : (e.target ? e.target.id : 'form');
+        v('goal', 'lead_form_submit', { form_id: String(formId) });
+      }, false);
+      document.addEventListener('click', function(e) {
+        var a = e.target && e.target.closest ? e.target.closest('a[href]') : null;
+        if (!a) return;
+        var href = a.getAttribute('href') || '';
+        var text = (a.innerText || a.textContent || '').trim().toLowerCase();
+        var v = getVysta();
+        if (/wa\.me|api\.whatsapp\.com/i.test(href) || a.closest('.chaty-widget') || a.closest('[data-channel="whatsapp"]')) {
+          if (text.includes('tester') || href.includes('tester')) {
+            v('goal', 'tester_lesson_click', { channel: 'whatsapp' });
+          }
+          v('goal', 'contact_whatsapp', { href: href.slice(0, 100) });
+          return;
+        }
+        if (/^tel:/i.test(href)) {
+          if (text.includes('tester')) {
+            v('goal', 'tester_lesson_click', { channel: 'phone' });
+          }
+          v('goal', 'contact_phone', { phone: href.replace(/^tel:/i, '').trim() });
+          return;
+        }
+        if (text.includes('tester lesson') || href.includes('first-driving-lesson')) {
+          v('goal', 'tester_lesson_click', { text: text.slice(0, 50) });
+          return;
+        }
+        if (text === 'book now' || text.includes('book your') || href.includes('/contact/')) {
+          if (text.includes('tester')) {
+            v('goal', 'tester_lesson_click', { type: 'book_tester' });
+          } else if (text === 'book now' || text.includes('book')) {
+            v('goal', 'booking_start', { text: text.slice(0, 50) });
+          }
+        }
+      }, true);
+    })();
+    </script>
+    <?php
+});
+```
+Or insert via the **WPCode** plugin (`Header Scripts`) or Cloudflare Zaraz.
+
