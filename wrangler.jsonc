@@ -19,5 +19,19 @@
       "database_id": "00000000-0000-0000-0000-000000000000",
       "migrations_dir": "migrations"
     }
-  ]
+  ],
+  "env": {
+    "staging": {
+      "name": "vysta-staging",
+      "workers_dev": true,
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "vysta-staging",
+          "database_id": "b11e3bf2-4e90-4b16-a58c-3ba99698aee3",
+          "migrations_dir": "migrations"
+        }
+      ]
+    }
+  }
 }
