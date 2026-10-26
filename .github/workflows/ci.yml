@@ -1,0 +1,108 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Production build
+        run: npm run build
+
+      - name: Apply local D1 migrations
+        run: npm run db:migrate:local
+
+      - name: Self-hosted smoke tests
+        env:
+          ADMIN_PASSWORD: change-me
+          BASE: http://127.0.0.1:8787
+          SESSION_SECRET: any-long-random-string
+        run: |
+          set -euo pipefail
+          npx wrangler dev --local --ip 127.0.0.1 --port 8787 \
+            --var ADMIN_PASSWORD:"$ADMIN_PASSWORD" \
+            --var SESSION_SECRET:"$SESSION_SECRET" \
+            > /tmp/vysta-self-hosted.log 2>&1 &
+          worker_pid=$!
+          trap 'kill "$worker_pid" 2>/dev/null || true' EXIT
+
+          for attempt in {1..30}; do
+            if curl --silent --show-error --fail "$BASE/api/auth/me" > /dev/null; then
+              break
+            fi
+            if ! kill -0 "$worker_pid" 2>/dev/null; then
+              cat /tmp/vysta-self-hosted.log
+              exit 1
+            fi
+            if [ "$attempt" -eq 30 ]; then
+              cat /tmp/vysta-self-hosted.log
+              exit 1
+            fi
+            sleep 1
+          done
+
+          npm run smoke
+
+      - name: Hosted-mode smoke tests
+        env:
+          BASE: http://127.0.0.1:8788
+          SESSION_SECRET: any-long-random-string
+        run: |
+          set -euo pipefail
+          npx wrangler dev --local --ip 127.0.0.1 --port 8788 \
+            --var ADMIN_PASSWORD:change-me \
+            --var SESSION_SECRET:"$SESSION_SECRET" \
+            --var GOOGLE_CLIENT_ID:test \
+            --var GOOGLE_CLIENT_SECRET:test \
+            --var ADMIN_EMAILS:owner@example.com \
+            --var PLAN_PRODUCT_ID:pdt_plan \
+            --var PLAN_SPOTS:50 \
+            --var 'PLAN_CHECKOUT_URL:https://checkout.dodopayments.com/buy/pdt_plan?quantity=1' \
+            --var BILLING_WEBHOOK_SECRET:whsec_dGVzdC1iaWxsaW5nLXNlY3JldA== \
+            > /tmp/vysta-hosted.log 2>&1 &
+          worker_pid=$!
+          trap 'kill "$worker_pid" 2>/dev/null || true' EXIT
+
+          for attempt in {1..30}; do
+            if curl --silent --show-error --fail "$BASE/api/auth/me" > /dev/null; then
+              break
+            fi
+            if ! kill -0 "$worker_pid" 2>/dev/null; then
+              cat /tmp/vysta-hosted.log
+              exit 1
+            fi
+            if [ "$attempt" -eq 30 ]; then
+              cat /tmp/vysta-hosted.log
+              exit 1
+            fi
+            sleep 1
+          done
+
+          node scripts/smoke-hosted.mjs

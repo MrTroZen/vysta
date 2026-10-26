@@ -215,6 +215,8 @@ No analytics tool is 100% accurate. These are the main gaps and how this project
 
 ## Local development
 
+See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for the complete setup, D1, verification, smoke-test, and CI workflow.
+
 ```bash
 cp .dev.vars.example .dev.vars        # password: change-me
 npm run db:migrate:local

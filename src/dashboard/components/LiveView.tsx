@@ -1,5 +1,6 @@
-import maplibregl from 'maplibre-gl';
+import { ErrorEvent as MapLibreErrorEvent, GPUInitializationError, Map as MapLibreMap, Marker, setWorkerUrl } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
+import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { displayName, persona } from '../../shared/names';
 import { api } from '../lib/api';
@@ -7,6 +8,8 @@ import { useDash } from '../lib/context';
 import { countryName, flag, fmtAgo } from '../lib/format';
 import { playPayment, playVisitor, unlockAudio } from '../lib/sounds';
 import { DeviceIcon, Favicon, Flag, SourceIcon } from './Icons';
+
+setWorkerUrl(workerUrl);
 
 interface LiveVisitor {
   visitor_id: string;
@@ -101,14 +104,15 @@ export default function LiveView({ onClose }: { onClose: () => void }) {
   const { site, money, openVisitor } = useDash();
   const rootRef = useRef<HTMLDivElement>(null);
   const mapEl = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<maplibregl.Map | null>(null);
-  const markers = useRef(new Map<string, maplibregl.Marker>());
+  const mapRef = useRef<MapLibreMap | null>(null);
+  const markers = useRef(new Map<string, Marker>());
   const knownVisitors = useRef<Set<string> | null>(null);
   const knownPayments = useRef<Set<string> | null>(null);
   const interacting = useRef(0);
 
   const [data, setData] = useState<Realtime | null>(null);
   const [error, setError] = useState('');
+  const [mapError, setMapError] = useState('');
   const [style, setStyle] = useState<StyleName>(() => pref('ml_live_style', 'light'));
   const [projection, setProjection] = useState<Projection>(() => pref('ml_live_projection', 'globe'));
   const [sound, setSound] = useState(() => pref<string>('ml_live_sound', 'off') === 'on');
@@ -151,14 +155,31 @@ export default function LiveView({ onClose }: { onClose: () => void }) {
   // ---- map setup
   useEffect(() => {
     if (!mapEl.current) return;
-    const map = new maplibregl.Map({
-      container: mapEl.current,
-      style: STYLES[style],
-      center: [10, 25],
-      zoom: 1.4,
-      attributionControl: { compact: true },
-    });
+    let map: MapLibreMap;
+    try {
+      map = new MapLibreMap({
+        container: mapEl.current,
+        style: STYLES[style],
+        center: [10, 25],
+        zoom: 1.4,
+        attributionControl: { compact: true },
+      });
+    } catch (cause) {
+      console.error('Live map failed to initialize', cause);
+      setMapError(
+        cause instanceof GPUInitializationError
+          ? 'Live View requires WebGL2, which is unavailable in this browser or device.'
+          : 'The live map could not be initialized in this browser.',
+      );
+      return;
+    }
     mapRef.current = map;
+    const handleMapError = ({ error: cause }: MapLibreErrorEvent) => {
+      console.error('Live map error', cause);
+      if (!map.loaded()) setMapError('The live map could not load its style or tiles.');
+    };
+    map.on('error', handleMapError);
+    map.once('load', () => setMapError(''));
     const applyProjection = () => {
       try {
         map.setProjection({ type: projectionRef.current });
@@ -185,6 +206,7 @@ export default function LiveView({ onClose }: { onClose: () => void }) {
       cancelAnimationFrame(raf);
       markers.current.forEach((m) => m.remove());
       markers.current.clear();
+      map.off('error', handleMapError);
       map.remove();
       mapRef.current = null;
     };
@@ -224,7 +246,7 @@ export default function LiveView({ onClose }: { onClose: () => void }) {
       const existing = markers.current.get(v.visitor_id);
       if (existing) existing.setLngLat([v.lon, v.lat]);
       else {
-        const m = new maplibregl.Marker({ element: markerElement(v, () => openVisitor(v.visitor_id)) })
+        const m = new Marker({ element: markerElement(v, () => openVisitor(v.visitor_id)) })
           .setLngLat([v.lon, v.lat])
           .addTo(map);
         markers.current.set(v.visitor_id, m);
@@ -284,6 +306,18 @@ export default function LiveView({ onClose }: { onClose: () => void }) {
       <div className="absolute inset-0">
         <div ref={mapEl} className="h-full w-full" />
       </div>
+
+      {mapError && (
+        <div className="absolute inset-0 flex items-center justify-center bg-[#070b1a] p-6" role="alert">
+          <div className="max-w-md rounded-2xl border border-white/10 bg-stone-900 p-5 text-center text-stone-100 shadow-xl">
+            <p className="font-semibold">Live map unavailable</p>
+            <p className="mt-2 text-sm text-stone-400">{mapError}</p>
+            <button className="mt-4 rounded-lg bg-white px-4 py-2 text-sm font-semibold text-stone-900" onClick={onClose}>
+              Return to dashboard
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Summary card */}
       <div className={`absolute left-3 top-3 w-[min(360px,calc(100%-24px))] rounded-2xl border p-4 shadow-xl backdrop-blur ${panel}`}>
