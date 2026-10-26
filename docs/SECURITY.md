@@ -103,22 +103,31 @@ Audit performed against the installed lockfile on 2026-10-26 after Phase 1.6. Cu
 
 Primary advisories: [MapLibre XSS](https://github.com/advisories/GHSA-jrc7-96c5-q579), [Tinypool worker-options RCE](https://github.com/advisories/GHSA-5gmw-xhrv-c9v3), [Tinypool `run()`-options RCE](https://github.com/advisories/GHSA-85c8-ppgw-ccpr), [Undici excessive content-encoding DoS](https://github.com/advisories/GHSA-xjj6-f33q-929c), and [PostCSS selector-parser CPU exhaustion](https://github.com/advisories/GHSA-rj75-hqrm-r3gf).
 
-## Existing production security limitations
+## Remediated and residual security inventory (Phase 1.7)
 
-The Phase 1 audit identified the following limitations. They remain unless a later change explicitly closes them:
+The Phase 1 audit identified several architectural and security limitations. The following have now been remediated:
+
+- **Complete site deletion**: `DELETE /api/sites/:id` and demo seed scripts now delete associated `payment_claims` alongside events, sessions, visitors, payments, and funnels.
+- **Defensive security headers**: All responses set `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, and restrictive `Permissions-Policy`.
+- **CSRF and Origin protection**: State-changing dashboard mutations (`POST`, `PATCH`, `DELETE`) validate `sec-fetch-site` (blocking cross-site requests) and origin headers, while preserving compatibility with local Vite dev proxying and non-browser tooling.
+- **Session binding and duration bounds**: Event collection now binds existing sessions to their initial `visitor_id`, preventing session hijacking or cross-visitor contamination. Engaged duration updates via pings require `visitor_id` ownership and are bounded at a maximum of 24 hours per session.
+- **Health diagnostics**: Added `/api/health` providing automated runtime readiness and D1 database connectivity checks.
+
+### Remaining production security limitations
+
+The following limitations remain for subsequent phases:
 
 1. Public event ingestion is spoofable with a known site ID and allowed hostname; there is no replay defense, per-site quota, or platform rate limit.
-2. Client-generated visitor/session IDs, identify data, goal properties, and duration counters are trusted more than a hostile client warrants.
-3. Site deletion does not remove `payment_claims`.
-4. Site API keys and Dodo webhook secrets are plaintext D1 fields; only API keys have a dedicated rotation action.
-5. Sessions are stateless for 30 days with no revocation/version field. State-changing routes have no explicit CSRF token or Origin validation, and static responses lack CSP, HSTS, frame, MIME-sniffing, and referrer-policy headers.
-6. Hosted Google OAuth lacks nonce/PKCE and does not independently verify the ID-token signature, expiry, or issued-at time. Hosted mode is not approved for production SaaS use.
-7. Personal data and detailed journeys are retained indefinitely; arbitrary goal properties can contain sensitive data, and dashboard assets make third-party requests.
-8. Schema integrity relies on application code rather than foreign keys, cascades, ownership constraints, or event-type checks.
-9. Hosted plan enforcement is inconsistent across browser collection, API-key endpoints, and site webhooks.
-10. Password brute-force protection is D1-based and basic; it has no platform rate limit and an `unknown` IP fallback bucket.
+2. Client-generated identify PII and arbitrary goal properties are accepted without strict schema validation.
+3. Site API keys and Dodo webhook secrets are plaintext D1 fields; only API keys have a dedicated rotation action.
+4. Sessions are stateless for 30 days with no revocation/version field.
+5. Hosted Google OAuth lacks nonce/PKCE and does not independently verify the ID-token signature, expiry, or issued-at time. Hosted mode is not approved for production SaaS use.
+6. Personal data and detailed journeys are retained indefinitely; arbitrary goal properties can contain sensitive data, and dashboard assets make third-party requests.
+7. Schema integrity relies on application code rather than foreign keys, cascades, ownership constraints, or event-type checks.
+8. Hosted plan enforcement is inconsistent across browser collection, API-key endpoints, and site webhooks.
+9. Password brute-force protection is D1-based and basic; it has no platform rate limit and an `unknown` IP fallback bucket.
 
-For a private self-hosted deployment, reduce exposure with a custom domain plus Cloudflare Access where practical, a strong unique password, a unique session secret, least-privilege Cloudflare account access, D1 backups, and monitoring. The MapLibre production-runtime advisory is fixed; these controls reduce the remaining application risks but do not eliminate the limitations above.
+For a private self-hosted deployment, reduce exposure with a custom domain plus Cloudflare Access where practical, a strong unique password, a unique session secret, least-privilege Cloudflare account access, D1 backups, and monitoring.
 
 ## Repository and data safety
 

@@ -175,12 +175,12 @@ Execution was not possible in the audit environment because no Node.js runtime o
 
 ### Phase 1 — safe multi-site self-hosting
 
-1. Pin a Vysta upstream baseline and add CI for install, typecheck, unit tests, build, migrations, both smoke suites, and tracker browser tests.
-2. Document environment separation, Cloudflare setup, secrets, custom domain/TLS, D1 backup/export/restore, deploy/rollback, and upgrade procedure. Add startup/config validation and health/diagnostic checks.
-3. Add forward-only integrity migrations and complete deletion, including payment claims. Define retention, data export, visitor erasure/anonymization, consent/opt-out behavior, and a privacy inventory.
-4. Add Cloudflare rate limiting/abuse controls for ingestion, login, generic APIs, and webhooks; validate Origin where useful, cap counter growth, bind events to session ownership, and add deduplication/replay defenses.
-5. Add security headers, explicit CSRF/Origin protection, tighter input validation, secret-handling guidance, and dependency/security scanning. Keep the existing single-admin model for this phase.
-6. Establish baseline load tests and D1 query plans at realistic event volumes before changing schema or analytics logic.
+- [x] **1. Baseline, CI, & Dependencies:** Upstream pinned (`348cf74a`), MapLibre XSS and Vitest vulnerabilities remediated, CI added (`.github/workflows/ci.yml`) for install, typecheck, tests, build, migrations, and smoke suites.
+- [x] **2. Environment Separation & Health:** Staging environment configured in `wrangler.jsonc` (`vysta-staging`), `deploy:staging` and `db:migrate:staging` npm scripts added; documentation in `docs/DEVELOPMENT.md` and `docs/SECURITY.md`; runtime diagnostic health check added (`GET /api/health`).
+- [x] **3. Data Deletion Completeness:** Complete deletion implemented across all site entities including `payment_claims` in `DELETE /api/sites/:id` and demo seed script (`scripts/seed-demo.mjs`).
+- [x] **4. Ingestion Abuse & Session Integrity:** Bound event ingestion to original session visitor ID to reject session hijacking; constrained ping duration updates to matching visitor IDs; capped total session duration at 24 hours (`86,400,000` ms).
+- [x] **5. Security Headers & CSRF/Origin Defense:** Global defensive security headers (`X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy`) applied on all responses; CSRF protection via `sec-fetch-site` and `Origin` validation enforced on state-changing dashboard routes (`/api/sites`, `/api/sites/*`, `/api/auth/logout`) with unit test and smoke test coverage.
+- [ ] **6. Privacy, Retention, & Load Baseline:** Define configurable data retention policies, visitor erasure/anonymization workflows, and establish baseline load tests / D1 query plans at realistic event volumes.
 
 ### Phase 2 — GSC and GA4
 

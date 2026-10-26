@@ -19,8 +19,14 @@ async function call(path, opts = {}) {
   const text = await res.text();
   let body;
   try { body = JSON.parse(text); } catch { body = text; }
-  return { status: res.status, body };
+  return { status: res.status, body, headers: res.headers };
 }
+
+const health = await call('/api/health');
+assert(health.status === 200 && health.body.status === 'ok' && health.body.d1 === 'connected', 'health check ok and d1 connected');
+assert(health.headers.get('x-content-type-options') === 'nosniff', 'security header x-content-type-options');
+assert(health.headers.get('x-frame-options') === 'DENY', 'security header x-frame-options');
+assert(health.headers.get('referrer-policy') === 'strict-origin-when-cross-origin', 'security header referrer-policy');
 
 const ua = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0 Safari/537.36';
 const event = (siteId, payload) =>
@@ -29,6 +35,16 @@ const event = (siteId, payload) =>
 assert((await call('/api/sites')).status === 401, 'dashboard API needs login');
 assert((await call('/api/auth/login', { method: 'POST', body: JSON.stringify({ password: 'nope' }) })).status === 401, 'wrong password rejected');
 assert((await call('/api/auth/login', { method: 'POST', body: JSON.stringify({ password: PASSWORD }) })).status === 200, 'login');
+
+// Cross-site request blocking check
+assert(
+  (await call('/api/sites', {
+    method: 'POST',
+    headers: { 'sec-fetch-site': 'cross-site' },
+    body: JSON.stringify({ domain: 'evil.com' }),
+  })).status === 403,
+  'cross-site dashboard mutation rejected',
+);
 
 // Remove leftovers from an interrupted earlier run (payment ids would collide).
 for (const old of (await call('/api/sites')).body) if (old.domain === 'smoke-test.com') await call(`/api/sites/${old.id}`, { method: 'DELETE' });

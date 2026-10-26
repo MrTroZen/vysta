@@ -139,8 +139,8 @@ export async function ingest(
   if (t === 'ping') {
     const ms = Math.max(0, Math.min(MAX_PING_MS, Math.round(Number(body.d) || 0)));
     await db
-      .prepare('UPDATE sessions SET duration = duration + ?, last_seen_at = ? WHERE site_id = ? AND id = ?')
-      .bind(ms, now, site.id, sid)
+      .prepare('UPDATE sessions SET duration = MIN(duration + ?, 86400000), last_seen_at = ? WHERE site_id = ? AND id = ? AND visitor_id = ?')
+      .bind(ms, now, site.id, sid, vid)
       .run();
     return;
   }
@@ -159,9 +159,14 @@ export async function ingest(
   }
 
   const existing = await db
-    .prepare('SELECT 1 FROM sessions WHERE site_id = ? AND id = ?')
+    .prepare('SELECT visitor_id FROM sessions WHERE site_id = ? AND id = ?')
     .bind(site.id, sid)
-    .first();
+    .first<{ visitor_id: string }>();
+
+  // Prevent session hijacking: reject events if the session was created by a different visitor.
+  if (existing && existing.visitor_id !== vid) {
+    return;
+  }
 
   const stmts: D1PreparedStatement[] = [];
   if (!existing) {

@@ -6,11 +6,35 @@ import { clearSession, currentUser, googleCallback, googleStart, isHosted, requi
 import { billingWebhook, checkout, planInfo } from './billing';
 import { passwordsMatch, randomId } from './lib/crypto';
 import { handleDodoWebhook, handleGoalApi, handlePaymentApi, rematchPayments } from './payments';
+import { isAllowedOrigin, SECURITY_HEADERS } from './lib/security';
 import { breakdown, customers, funnel, makeCtx, overview, realtime, visitorProfile, visitors, type FunnelStep } from './stats';
 
 const app = new Hono<AppEnv>();
 const MAX_FAILURES = 10;
 const LOCKOUT_MS = 15 * 60_000;
+
+// Apply standard defensive security headers across all responses
+app.use('*', async (c, next) => {
+  await next();
+  for (const [k, v] of Object.entries(SECURITY_HEADERS)) {
+    c.header(k, v);
+  }
+});
+
+// ---------- health and diagnostics
+
+app.get('/api/health', async (c) => {
+  try {
+    const res = await c.env.DB.prepare('SELECT 1 AS ok').first<{ ok: number }>();
+    return c.json({
+      status: res?.ok === 1 ? 'ok' : 'degraded',
+      d1: res?.ok === 1 ? 'connected' : 'error',
+      ts: Date.now(),
+    });
+  } catch (e) {
+    return c.json({ status: 'error', d1: 'disconnected', error: (e as Error).message }, 500);
+  }
+});
 
 // ---------- public: tracking, webhooks, server-side API
 
@@ -53,7 +77,10 @@ app.post('/api/auth/login', async (c) => {
 app.get('/api/auth/google', googleStart);
 app.get('/api/auth/google/callback', googleCallback);
 
-app.post('/api/auth/logout', (c) => {
+app.post('/api/auth/logout', async (c) => {
+  if (!isAllowedOrigin({ get: (h) => c.req.header(h) ?? null }, c.req.url)) {
+    return c.json({ error: 'Cross-site request blocked' }, 403);
+  }
   clearSession(c);
   return c.json({ ok: true });
 });
@@ -71,8 +98,17 @@ app.get('/api/billing/checkout', requireUser, checkout);
 
 // ---------- dashboard API (login required)
 
-app.use('/api/sites', requireUser);
-app.use('/api/sites/*', requireUser);
+const csrfProtection = async (c: Context<AppEnv>, next: Next) => {
+  if (['POST', 'PATCH', 'PUT', 'DELETE'].includes(c.req.method)) {
+    if (!isAllowedOrigin({ get: (h) => c.req.header(h) ?? null }, c.req.url)) {
+      return c.json({ error: 'Cross-site request blocked' }, 403);
+    }
+  }
+  await next();
+};
+
+app.use('/api/sites', requireUser, csrfProtection);
+app.use('/api/sites/*', requireUser, csrfProtection);
 
 const loadSite = async (c: Context<AppEnv>, next: Next) => {
   const access = siteAccessSql(c.env, c.get('user'));
@@ -194,7 +230,7 @@ app.post('/api/sites/:id/rotate-key', async (c) => {
 app.delete('/api/sites/:id', async (c) => {
   const id = c.get('site').id;
   await c.env.DB.batch(
-    ['events', 'sessions', 'visitors', 'payments', 'funnels'].map((t) =>
+    ['events', 'sessions', 'visitors', 'payments', 'funnels', 'payment_claims'].map((t) =>
       c.env.DB.prepare(`DELETE FROM ${t} WHERE site_id = ?`).bind(id),
     ).concat(c.env.DB.prepare('DELETE FROM sites WHERE id = ?').bind(id)),
   );

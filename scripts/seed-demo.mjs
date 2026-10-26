@@ -38,7 +38,15 @@ const DEVICES = [[['Chrome', 'Mac OS', 'Desktop'], 40], [['Safari', 'Mac OS', 'D
 const NAMES = ['Vlad Petrov', 'Jordan Lee', 'Ricardo Alves', 'Mia Schmidt', 'Jack Turner', 'Aisha Khan', 'Lucas Martin', 'Priya Sharma', 'Noah Kim', 'Emma Rossi', 'Ravi Patel', 'Sofia Garcia', 'Liam Chen', 'Chloe Dubois'];
 
 const out = [];
-out.push(`DELETE FROM events WHERE site_id = '${siteId}';`, `DELETE FROM sessions WHERE site_id = '${siteId}';`, `DELETE FROM visitors WHERE site_id = '${siteId}';`, `DELETE FROM payments WHERE site_id = '${siteId}';`, `DELETE FROM funnels WHERE site_id = '${siteId}';`, `DELETE FROM sites WHERE id = '${siteId}';`);
+out.push(
+  `DELETE FROM events WHERE site_id = '${siteId}';`,
+  `DELETE FROM sessions WHERE site_id = '${siteId}';`,
+  `DELETE FROM visitors WHERE site_id = '${siteId}';`,
+  `DELETE FROM payments WHERE site_id = '${siteId}';`,
+  `DELETE FROM funnels WHERE site_id = '${siteId}';`,
+  `DELETE FROM payment_claims WHERE site_id = '${siteId}';`,
+  `DELETE FROM sites WHERE id = '${siteId}';`
+);
 out.push(`INSERT INTO sites (id, name, domain, timezone, currency, api_key, created_at) VALUES ('${siteId}', 'ShipKit', 'shipkit.dev', 'UTC', 'USD', 'ml_demo_key', ${now - 60 * DAY});`);
 out.push(`INSERT INTO funnels (id, site_id, name, steps, created_at) VALUES ('fun00001', '${siteId}', 'Landing → Checkout', ${q(JSON.stringify([{ type: 'page', value: '/' }, { type: 'page', value: '/pricing' }, { type: 'goal', value: 'checkout_click' }]))}, ${now});`);
 

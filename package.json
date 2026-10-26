@@ -18,7 +18,9 @@
     "test": "vitest run",
     "db:migrate:local": "wrangler d1 migrations apply minilytics --local",
     "db:migrate": "wrangler d1 migrations apply minilytics --remote",
+    "db:migrate:staging": "wrangler d1 migrations apply vysta-staging --remote --env staging",
     "deploy": "vite build && wrangler d1 migrations apply minilytics --remote && wrangler deploy",
+    "deploy:staging": "vite build && wrangler d1 migrations apply vysta-staging --remote --env staging && wrangler deploy --env staging",
     "seed": "node scripts/seed-demo.mjs && wrangler d1 execute minilytics --local --file .wrangler/seed.sql",
     "smoke": "node scripts/smoke.mjs"
   },

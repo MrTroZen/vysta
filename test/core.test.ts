@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { classify } from '../src/shared/sources';
 import { belongsTo, normalizePath } from '../src/worker/collect';
 import { verifyStandardWebhook } from '../src/worker/lib/crypto';
+import { isAllowedOrigin, SECURITY_HEADERS } from '../src/worker/lib/security';
 import { bucketLabels, resolveRange, startOfDay, tzOffset } from '../src/worker/lib/time';
 import { isBot, parseUA } from '../src/worker/lib/ua';
 
@@ -98,5 +99,52 @@ describe('Standard Webhooks (Dodo)', () => {
   it('rejects tampering and stale timestamps', async () => {
     expect(await verifyStandardWebhook(secret, { id: 'msg_1', timestamp: ts, signature: `v1,${sig}` }, body + ' ')).toBe(false);
     expect(await verifyStandardWebhook(secret, { id: 'msg_1', timestamp: String(Number(ts) - 3600), signature: `v1,${sig}` }, body)).toBe(false);
+  });
+});
+
+describe('security baseline', () => {
+  it('defines defensive security headers', () => {
+    expect(SECURITY_HEADERS['X-Content-Type-Options']).toBe('nosniff');
+    expect(SECURITY_HEADERS['X-Frame-Options']).toBe('DENY');
+    expect(SECURITY_HEADERS['Referrer-Policy']).toBe('strict-origin-when-cross-origin');
+    expect(SECURITY_HEADERS['Permissions-Policy']).toBeDefined();
+  });
+
+  const mockHeaders = (map: Record<string, string>) => ({
+    get: (k: string) => map[k.toLowerCase()] ?? null,
+  });
+
+  it('blocks sec-fetch-site cross-site requests', () => {
+    const headers = mockHeaders({ 'sec-fetch-site': 'cross-site' });
+    expect(isAllowedOrigin(headers, 'https://vysta.example.com/api/sites')).toBe(false);
+  });
+
+  it('allows same-origin requests matching request host', () => {
+    const headers = mockHeaders({
+      host: 'vysta.example.com',
+      origin: 'https://vysta.example.com',
+    });
+    expect(isAllowedOrigin(headers, 'https://vysta.example.com/api/sites')).toBe(true);
+  });
+
+  it('rejects cross-origin requests from foreign domains', () => {
+    const headers = mockHeaders({
+      host: 'vysta.example.com',
+      origin: 'https://malicious.example.com',
+    });
+    expect(isAllowedOrigin(headers, 'https://vysta.example.com/api/sites')).toBe(false);
+  });
+
+  it('allows local development proxying across localhost ports', () => {
+    const headers = mockHeaders({
+      host: 'localhost:8787',
+      origin: 'http://localhost:5173',
+    });
+    expect(isAllowedOrigin(headers, 'http://localhost:8787/api/sites')).toBe(true);
+  });
+
+  it('allows requests without origin header (direct API / curl)', () => {
+    const headers = mockHeaders({ host: 'vysta.example.com' });
+    expect(isAllowedOrigin(headers, 'https://vysta.example.com/api/sites')).toBe(true);
   });
 });
