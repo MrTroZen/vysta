@@ -32,6 +32,18 @@
           "migrations_dir": "migrations"
         }
       ]
+    },
+    "production": {
+      "name": "vysta-production",
+      "workers_dev": true,
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "vysta-production",
+          "database_id": "d628f0aa-abdb-4e0a-95b7-3e0a10269da5",
+          "migrations_dir": "migrations"
+        }
+      ]
     }
   }
 }
