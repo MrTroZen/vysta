@@ -223,6 +223,43 @@ export async function rematchPayments(db: D1Database, site: Site) {
 
 const str = (v: unknown) => (typeof v === 'string' && v ? v : null);
 
+const SERVER_GOAL_MAX_AGE_MS = 30 * 86_400_000;
+const SERVER_GOAL_KEY_MAX_LENGTH = 128;
+const SERVER_GOAL_RECEIPT_PREDICATE =
+  'EXISTS (SELECT 1 FROM server_goal_receipts sgr WHERE sgr.site_id = ? AND sgr.idempotency_key = ? AND sgr.processing_token = ?)';
+
+function idempotencyKey(value: unknown): { key: string | null; error: string | null } {
+  if (value === undefined || value === null) return { key: null, error: null };
+  if (typeof value !== 'string') return { key: null, error: 'idempotency key must be a string' };
+  const key = value.trim();
+  if (!key || key.length > SERVER_GOAL_KEY_MAX_LENGTH) {
+    return { key: null, error: `idempotency key must be 1-${SERVER_GOAL_KEY_MAX_LENGTH} characters` };
+  }
+  return { key, error: null };
+}
+
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map((item) => stableJson(item)).join(',')}]`;
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value as Record<string, unknown>)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableJson((value as Record<string, unknown>)[key])}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(value) ?? 'null';
+}
+
+async function goalRequestHash(value: unknown): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(stableJson(value)));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+function goalProperties(body: Record<string, unknown>): { raw: unknown; stored: string | null } {
+  const raw = Object.prototype.hasOwnProperty.call(body, 'properties') ? body.properties : body.props;
+  if (raw === undefined || raw === null) return { raw: null, stored: null };
+  return { raw, stored: JSON.stringify(raw).slice(0, 1000) };
+}
+
 function pickMeta(meta: Record<string, unknown> | undefined, keys: string[]): string | null {
   if (!meta) return null;
   for (const k of keys) if (str(meta[k])) return meta[k] as string;
@@ -350,27 +387,119 @@ export async function handlePaymentApi(c: Context<AppEnv>) {
 
 /**
  * Server-side goals (e.g. "signup" from your backend).
- * POST /api/v1/goals  { "visitor_id": "...", "name": "signup" }
+ * POST /api/v1/goals  { "session_id": "...", "name": "signup", "idempotency_key": "signup_123" }
  */
 export async function handleGoalApi(c: Context<AppEnv>) {
   const site = await siteFromApiKey(c);
   if (!site) return c.json({ error: 'invalid api key' }, 401);
   const b = await c.req.json<Record<string, unknown>>().catch(() => null);
-  const vid = str(b?.visitor_id);
   const name = str(b?.name)?.slice(0, 64);
-  if (!vid || !name) return c.json({ error: 'visitor_id and name are required' }, 400);
-  const s = await c.env.DB.prepare(
-    'SELECT id, exit_page FROM sessions WHERE site_id = ? AND visitor_id = ? ORDER BY started_at DESC LIMIT 1',
-  )
-    .bind(site.id, vid)
-    .first<{ id: string; exit_page: string }>();
-  if (!s) return c.json({ error: 'visitor not found' }, 404);
+  const requestedSessionId = str(b?.session_id);
+  const requestedVisitorId = str(b?.visitor_id);
+  if (!name || (!requestedSessionId && !requestedVisitorId)) {
+    return c.json({ error: 'name and either session_id or visitor_id are required' }, 400);
+  }
+
+  const headerKey = idempotencyKey(c.req.header('idempotency-key'));
+  const bodyKey = idempotencyKey(b?.idempotency_key);
+  if (headerKey.error || bodyKey.error) return c.json({ error: headerKey.error ?? bodyKey.error }, 400);
+  if (headerKey.key && bodyKey.key && headerKey.key !== bodyKey.key) {
+    return c.json({ error: 'header and body idempotency keys must match' }, 400);
+  }
+  const key = headerKey.key ?? bodyKey.key;
+  const properties = goalProperties(b ?? {});
   const now = Date.now();
+  const requestHash = key
+    ? await goalRequestHash({
+        session_id: requestedSessionId,
+        visitor_id: requestedVisitorId,
+        name,
+        properties: properties.raw,
+      })
+    : null;
+
+  if (key && requestHash) {
+    const receipt = await c.env.DB.prepare(
+      `SELECT request_hash, session_id, visitor_id FROM server_goal_receipts
+       WHERE site_id = ? AND idempotency_key = ?`,
+    )
+      .bind(site.id, key)
+      .first<{ request_hash: string; session_id: string; visitor_id: string }>();
+    if (receipt) {
+      if (receipt.request_hash !== requestHash) return c.json({ error: 'idempotency key already used for another request' }, 409);
+      await c.env.DB.prepare(
+        `UPDATE server_goal_receipts SET last_received_at = ?, duplicate_count = duplicate_count + 1
+         WHERE site_id = ? AND idempotency_key = ?`,
+      )
+        .bind(now, site.id, key)
+        .run();
+      return c.json({ ok: true, duplicate: true, session_id: receipt.session_id, visitor_id: receipt.visitor_id });
+    }
+  }
+
+  const cutoff = now - SERVER_GOAL_MAX_AGE_MS;
+  const s = requestedSessionId
+    ? await c.env.DB.prepare(
+        `SELECT id, visitor_id, exit_page FROM sessions
+         WHERE site_id = ? AND id = ? AND last_seen_at >= ?`,
+      )
+        .bind(site.id, requestedSessionId, cutoff)
+        .first<{ id: string; visitor_id: string; exit_page: string | null }>()
+    : await c.env.DB.prepare(
+        `SELECT id, visitor_id, exit_page FROM sessions
+         WHERE site_id = ? AND visitor_id = ? AND last_seen_at >= ?
+         ORDER BY started_at DESC LIMIT 1`,
+      )
+        .bind(site.id, requestedVisitorId, cutoff)
+        .first<{ id: string; visitor_id: string; exit_page: string | null }>();
+  if (!s) return c.json({ error: 'recent session not found' }, 404);
+  if (requestedVisitorId && requestedVisitorId !== s.visitor_id) {
+    return c.json({ error: 'session_id does not belong to visitor_id' }, 409);
+  }
+
+  if (!key || !requestHash) {
+    await c.env.DB.batch([
+      c.env.DB.prepare('UPDATE sessions SET goals = goals + 1 WHERE site_id = ? AND id = ?').bind(site.id, s.id),
+      c.env.DB.prepare(
+        "INSERT INTO events (site_id, session_id, visitor_id, ts, type, name, path, props) VALUES (?, ?, ?, ?, 'goal', ?, ?, ?)",
+      ).bind(site.id, s.id, s.visitor_id, now, name, s.exit_page, properties.stored),
+    ]);
+    return c.json({ ok: true, duplicate: false, session_id: s.id, visitor_id: s.visitor_id });
+  }
+
+  const token = crypto.randomUUID();
   await c.env.DB.batch([
-    c.env.DB.prepare('UPDATE sessions SET goals = goals + 1 WHERE site_id = ? AND id = ?').bind(site.id, s.id),
     c.env.DB.prepare(
-      "INSERT INTO events (site_id, session_id, visitor_id, ts, type, name, path, props) VALUES (?, ?, ?, ?, 'goal', ?, ?, ?)",
-    ).bind(site.id, s.id, vid, now, name, s.exit_page, b?.props ? JSON.stringify(b.props).slice(0, 1000) : null),
+      `INSERT OR IGNORE INTO server_goal_receipts
+       (site_id, idempotency_key, request_hash, processing_token, session_id, visitor_id, goal_name, first_received_at, last_received_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(site.id, key, requestHash, token, s.id, s.visitor_id, name, now, now),
+    c.env.DB.prepare(
+      `UPDATE sessions SET goals = goals + 1 WHERE site_id = ? AND id = ? AND ${SERVER_GOAL_RECEIPT_PREDICATE}`,
+    ).bind(site.id, s.id, site.id, key, token),
+    c.env.DB.prepare(
+      `INSERT INTO events (site_id, session_id, visitor_id, ts, type, name, path, props)
+       SELECT ?, ?, ?, ?, 'goal', ?, ?, ? WHERE ${SERVER_GOAL_RECEIPT_PREDICATE}`,
+    ).bind(site.id, s.id, s.visitor_id, now, name, s.exit_page, properties.stored, site.id, key, token),
+    c.env.DB.prepare(
+      `UPDATE server_goal_receipts
+       SET last_received_at = ?, duplicate_count = duplicate_count + CASE WHEN processing_token = ? THEN 0 ELSE 1 END
+       WHERE site_id = ? AND idempotency_key = ?`,
+    ).bind(now, token, site.id, key),
   ]);
-  return c.json({ ok: true });
+
+  const receipt = await c.env.DB.prepare(
+    `SELECT request_hash, processing_token, session_id, visitor_id FROM server_goal_receipts
+     WHERE site_id = ? AND idempotency_key = ?`,
+  )
+    .bind(site.id, key)
+    .first<{ request_hash: string; processing_token: string; session_id: string; visitor_id: string }>();
+  if (!receipt) return c.json({ error: 'could not record idempotency receipt' }, 500);
+  if (receipt.request_hash !== requestHash) return c.json({ error: 'idempotency key already used for another request' }, 409);
+  return c.json({
+    ok: true,
+    duplicate: receipt.processing_token !== token,
+    session_id: receipt.session_id,
+    visitor_id: receipt.visitor_id,
+  });
 }

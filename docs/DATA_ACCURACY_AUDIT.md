@@ -1,6 +1,6 @@
 # Vysta data accuracy audit and test plan
 
-Audit date: 2026-10-27. The Phase 5 audit was the baseline; this document now records the completed reporting time-base and DST boundary corrections. No D1 schema or stored raw data was changed.
+Audit date: 2026-10-27. The Phase 5 audit was the baseline; this document now records the completed reporting time-base, DST boundary, attribution, and server-goal corrections.
 
 Read `ANALYTICS_SEMANTICS.md` first for the exact definitions and one-visitor lifecycle.
 
@@ -8,11 +8,11 @@ Read `ANALYTICS_SEMANTICS.md` first for the exact definitions and one-visitor li
 
 Vysta's basic first-party visitor continuity, normal 30-minute browser session rotation, domain validation, common source classification, page/goal storage, and bot denylist are understandable and now substantially better characterized by deterministic tests.
 
-The full analytics product is not yet trustworthy enough for every precise internal channel/conversion decision. Reporting-period pageview, timezone, and explicit-source attribution defects are now corrected and protected by deterministic tests. The remaining high-impact issue is:
+The full analytics product is not yet trustworthy enough for every precise internal channel/conversion decision. Reporting-period pageview, timezone, explicit-source attribution, and server-goal contract defects are now corrected and protected by deterministic tests. The remaining high-impact issue is:
 
 1. browser events have no idempotency key, so replays, duplicate script instances, and duplicate listeners count again;
 
-Engaged time should be treated as a visible-tab estimate, not human attention, and it currently double-counts simultaneous visible tabs. Goal/conversion numbers require care because client goals are intentionally interaction signals and the server endpoint is not idempotent. Reporting clocks are now explicit and consistent with each metric's documented basis.
+Engaged time should be treated as a visible-tab estimate, not human attention, and it currently double-counts simultaneous visible tabs. Client goals remain interaction signals; authoritative backend goals require a durable idempotency key. Reporting clocks are explicit and consistent with each metric's documented basis.
 
 ## Accuracy test matrix
 
@@ -110,7 +110,7 @@ Status legend:
 | JavaScript API goal | `goal` or `track` command sends goal | Automated |
 | Event queued before ready | Works only when a valid `minilytics.q` stub already exists | Automated tracker consumption; installation stub is a docs gap |
 | Rapid duplicate click/API | Every call counts | Automated |
-| Server-side goal | Latest session for visitor receives goal; request SID ignored | Automated |
+| Server-side goal | Exact recent requested session, otherwise latest recent visitor session; keyed retries mutate once | Automated with SQLite migration fixture |
 | Malformed empty goal | Dropped after session ownership lookup | Automated |
 | Oversized browser properties/body | Collector rejects raw bodies over 8 KiB | Smoke/endpoint unit is a Gap |
 | More than 1,000 serialized property chars | Stored value is sliced and may be invalid JSON | Gap; confirmed by code |
@@ -154,6 +154,7 @@ The Phase 5 suite added characterization tests. The boundary fix adds real SQLit
 - `test/core.test.ts` now has fixture-based major source coverage, explicit precedence cases, privacy-browser/bot separation, generic referrals, and DST-boundary characterization.
 - `test/reporting-time.test.ts`: fixed A-H cross-midnight/range-start/range-end/previous/daily/hourly assertions against the real migration schema.
 - `test/timezone-reporting.test.ts`: Europe/London GMT-to-BST and BST-to-GMT event totals, repeated/missing hour buckets, previous local-day comparison, plus Asia/Dhaka regression coverage.
+- `test/server-goals.test.ts`: real migration schema coverage for exact/fallback session selection, ownership and recency, documented/legacy properties, atomic concurrent retry, key conflicts, site scoping, and unkeyed compatibility.
 
 The suite is deterministic: timestamps are fixed, network calls are captured locally, and no external site is needed.
 
@@ -218,6 +219,8 @@ These are defects against Vysta's own comments, UI promises, or internally consi
 **FIX:** If an explicit tag exists, canonicalize it when known, otherwise use its raw value; consult referrer only when no explicit tag exists. Preserve channel medium precedence.
 
 ### P0-6: server-side goal contract is internally inconsistent and not idempotent
+
+**RESOLVED:** The endpoint accepts the documented `properties` field while retaining `props`, honors an exact site-scoped `session_id` with visitor ownership validation, bounds exact and fallback session matching to 30 days, and atomically deduplicates a site-scoped body/header idempotency key. Unkeyed legacy requests remain accepted and replayable.
 
 **EXPECTED:** A confirmation API should attach to the requested/appropriate session, store documented properties, and safely accept retries.
 
@@ -327,7 +330,7 @@ CREATE INDEX ingestion_receipts_site_time
 4. For each request, generate a server processing token. In one atomic D1 batch, `INSERT OR IGNORE` the receipt, and condition every session/visitor/event mutation on the receipt holding that token. A replay's insert is ignored, so its different token cannot mutate analytics. Update duplicate diagnostics separately.
 5. Keep receipt retention at least as long as the maximum retry/replay window chosen by policy. Deleting a receipt reopens that event ID to replay, so permanent minimal receipts or event-table uniqueness may be preferable for pageviews/goals.
 6. Add `event_id` to `events` for diagnostics and a partial unique index for non-null IDs if the receipt/table write strategy is verified with D1 transaction semantics.
-7. Extend server-side goals with `idempotency_key` in body or header, scoped to site. Confirmed orders/signups should use a business transaction ID where available.
+7. Server-side goals use the separate `server_goal_receipts` design from migration `0007_server_goal_idempotency.sql`; browser event IDs and server business keys remain separate namespaces.
 8. Do not derive identity from payload equality or timestamp/name/path hashes. Two legitimate identical clicks can happen; deduplicate logical sends, not similar content.
 
 ### Compatibility and cost implications
@@ -338,7 +341,7 @@ CREATE INDEX ingestion_receipts_site_time
 - Pings and identifies need receipts too; event-table uniqueness alone cannot protect their session/visitor mutations.
 - Deduplication does not replace a singleton tracker guard, goal debounce policy, rate limiting, or bot controls.
 
-No migration was created in this phase.
+P0.5 adds the forward-only `0007_server_goal_idempotency.sql` receipt table without rewriting stored analytics data.
 
 ## Source/channel audit
 
@@ -413,7 +416,7 @@ Use for intent/interaction signals such as CTA clicks, pricing views, checkout s
 
 ### Server-side goals
 
-Use for confirmed signup, accepted lead, created order, successful payment, or another backend state transition. The server must carry a Vysta visitor/session identity captured earlier and a durable business idempotency key. Vysta's current endpoint does not yet provide sufficient idempotency or requested-session behavior; fix that before using it as a financial source of truth.
+Use for confirmed signup, accepted lead, created order, successful payment, or another backend state transition. Carry a Vysta visitor/session identity captured earlier and a durable business idempotency key. The requested session is used exactly when recent and valid; a same-request retry with the same key is safe.
 
 ### Avoiding double count
 
@@ -422,7 +425,7 @@ Choose one authoritative goal name per business outcome. A recommended naming sp
 - `checkout_click` or existing `view_pricing`: client interaction only;
 - `order_confirmed` / `signup_confirmed`: server confirmation only.
 
-Do not send the same semantic goal from both client and server unless both use one shared idempotency key and the ingestion contract explicitly coalesces them. If both stages matter, keep distinct names and build the funnel between them. This audit makes no change to Qavyo's `view_pricing` goal.
+Do not send the same semantic goal from both client and server: server-goal idempotency keys deduplicate server requests only and do not coalesce a separate browser goal. If both stages matter, keep distinct names and build the funnel between them. This audit makes no change to Qavyo's `view_pricing` goal.
 
 ## Future Tracking Health design
 
@@ -467,7 +470,6 @@ Rejected requests create an abuse-accounting problem: writing one D1 row per rej
 - real Next.js router fixture and browser back/forward at three navigation styles;
 - real concurrency race between initial pageview and goal/outbound;
 - handler-level malformed/oversized collection matrix and response/counter verification;
-- server-side goal no-session, invalid API key, stale/latest-session, retry/idempotency cases after contract decision;
 - Android/iOS app referrer fixture corpus;
 - Safari/privacy-browser cookie expiry and browser minimize behavior;
 - same-timestamp and 100,000-row funnel boundaries;
@@ -484,7 +486,7 @@ Rejected requests create an abuse-accounting problem: writing one D1 row per rej
 3. Approve and ship additive event-ID receipts: schema/Worker first, tracker second, server-goal idempotency third; expose duplicate diagnostics.
 4. Add the tracker singleton guard and test CMS/tag-manager double inclusion.
 5. **Complete:** correct explicit attribution precedence while preserving raw UTM/ref fields and channel-medium rules; validate against the fixture table.
-6. Version/extend server goals for requested session, property compatibility, recency, and idempotency; then correct integration docs.
+6. **Complete:** extend server goals for requested session, property compatibility, recency, and idempotency; then correct integration docs.
 
 ### Exact P1 sequence
 
@@ -498,4 +500,4 @@ Rejected requests create an abuse-accounting problem: writing one D1 row per rej
 
 ## Trust decision
 
-**Current answer: reporting boundaries and custom-tag attribution are ready; the whole product is not yet audit-grade.** Daily/hourly pageview totals, custom date boundaries, local DST buckets, previous-period comparisons, and explicit-source precedence now have deterministic coverage. Event idempotency, duplicate tracker inclusion, engaged duration, and the server-goal contract remain unresolved, so those areas should not yet be treated as decision-grade.
+**Current answer: reporting boundaries, custom-tag attribution, and keyed server confirmations are ready; the whole product is not yet audit-grade.** Daily/hourly pageview totals, custom date boundaries, local DST buckets, previous-period comparisons, explicit-source precedence, and the server-goal contract now have deterministic coverage. Browser event idempotency, duplicate tracker inclusion, and engaged duration remain unresolved on this branch.

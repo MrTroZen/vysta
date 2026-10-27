@@ -236,8 +236,9 @@ const session = await dodo.checkoutSessions.create({
 
 curl -X POST ${origin}/api/v1/goals \\
   -H "Authorization: Bearer ${site.api_key}" \\
+  -H "Idempotency-Key: signup_<durable-business-id>" \\
   -H "Content-Type: application/json" \\
-  -d '{"visitor_id":"<ml_vid cookie>","name":"signup"}'`}</Code>
+  -d '{"session_id":"<ml_sid cookie>","visitor_id":"<ml_vid cookie>","name":"signup_confirmed","properties":{"plan":"pro"}}'`}</Code>
       </Section>
 
       <LinkBuilder domain={site.domain} />

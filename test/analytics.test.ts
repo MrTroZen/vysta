@@ -371,11 +371,13 @@ describe('reporting semantics characterization', () => {
 });
 
 describe('server-side goals characterization', () => {
-  it('attaches a goal to the latest visitor session and currently reads props, not properties or session_id', async () => {
+  it('attaches a goal to the requested session and prefers documented properties', async () => {
     const f = fakeDb({
       first: (statement) => {
         if (statement.sql.includes('FROM sites WHERE api_key')) return site;
-        if (statement.sql.includes('FROM sessions WHERE site_id')) return { id: 'latest-session', exit_page: '/checkout' };
+        if (statement.sql.includes('FROM sessions')) {
+          return { id: 'requested-session', visitor_id: 'visitor-0001', exit_page: '/checkout', last_seen_at: now };
+        }
         return null;
       },
     });
@@ -390,7 +392,7 @@ describe('server-side goals characterization', () => {
           visitor_id: 'visitor-0001',
           session_id: 'requested-session',
           name: 'confirmed_signup',
-          properties: { ignored: true },
+          properties: { documented: true },
           props: { stored: true },
         }),
       },
@@ -398,15 +400,20 @@ describe('server-side goals characterization', () => {
     );
 
     expect(response.status).toBe(200);
-    expect(f.batches[0][0].args).toEqual([site.id, 'latest-session']);
+    expect(f.prepared.find((statement) => statement.sql.includes('FROM sessions'))?.args).toEqual([
+      site.id,
+      'requested-session',
+      expect.any(Number),
+    ]);
+    expect(f.batches[0][0].args).toEqual([site.id, 'requested-session']);
     expect(f.batches[0][1].args.slice(0, 7)).toEqual([
       site.id,
-      'latest-session',
+      'requested-session',
       'visitor-0001',
       expect.any(Number),
       'confirmed_signup',
       '/checkout',
-      '{"stored":true}',
+      '{"documented":true}',
     ]);
   });
 });

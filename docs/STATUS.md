@@ -14,7 +14,7 @@ The first real tracked site is Qavyo Pricing.
 
 ## Verification
 
-- 94 tests pass across 6 test files.
+- 100 tests pass across 7 test files.
 - `npm run verify` runs typecheck, unit tests, and the production build.
 - `npm run verify:full` adds isolated self-hosted and hosted local smoke suites.
 
@@ -23,10 +23,11 @@ The first real tracked site is Qavyo Pricing.
 - P0.1 reporting-time and P0.2 DST corrections are committed and verified on staging.
 - P0.3 duplicate initialization and site-scoped browser event idempotency are complete and verified on staging.
 - P0.4 explicit UTM/ref precedence over HTTP referrers is complete and verified on staging.
-- Staging Worker version: `1a50fc06-afbd-489a-b0a1-cf9960d5fb54`.
-- P0.1-P0.4 are not deployed to production.
-- Remaining P0 work: the server-goal contract.
-- Reporting boundaries, browser event delivery, and custom-source attribution are protected; Vysta is not yet fully decision-grade.
+- P0.5 server-goal session, property, recency, and idempotency contract is complete and verified on staging.
+- Staging Worker version: `32295438-2e81-4b24-8bc0-e999a0575332`.
+- P0.1-P0.5 are not deployed to production.
+- All planned P0 accuracy work is complete; the final accuracy review is active.
+- Reporting boundaries, browser event delivery, custom-source attribution, and keyed server confirmations are protected; P1 findings remain.
 
 ## Git
 

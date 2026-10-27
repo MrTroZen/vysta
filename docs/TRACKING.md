@@ -74,9 +74,12 @@ For webhook-verified backend events (e.g., CRM leads, completed payments):
 ```bash
 curl -X POST https://vysta-production.vysta.workers.dev/api/v1/goals \
   -H "Authorization: Bearer <SITE_API_KEY>" \
+  -H "Idempotency-Key: booking_<DURABLE_BUSINESS_ID>" \
   -H "Content-Type: application/json" \
   -d '{"name": "booking_complete", "session_id": "sid_...", "properties": {"amount": 45}}'
 ```
+
+Send `name` plus either the captured `session_id` or `visitor_id`. A supplied session ID is used exactly and must belong to the visitor when both IDs are sent; without it, Vysta uses that visitor's latest session. Sessions must have been active within the last 30 days. Use a durable, unique `Idempotency-Key` header (or `idempotency_key` body field) for confirmed backend outcomes: retrying the same request is safe, while reusing the key for different content returns `409`. Legacy `props` and requests without an idempotency key remain accepted, but unkeyed retries are not deduplicated.
 
 ---
 

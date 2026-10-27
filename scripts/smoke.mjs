@@ -137,6 +137,24 @@ assert(fs.map((s) => s.visitors).join(',') === '1,1,1', `funnel 1,1,1 (got ${fs.
 const apiPay = await fetch(BASE + '/api/v1/payments', { method: 'POST', headers: { authorization: `Bearer ${site.api_key}`, 'content-type': 'application/json' }, body: JSON.stringify({ transaction_id: 't1', amount: 10.5, visitor_id: vid }) });
 assert((await apiPay.json()).attributed === true, 'generic payments API attributes');
 
+const serverGoalBody = JSON.stringify({
+  session_id: sid,
+  visitor_id: vid,
+  name: 'order_confirmed',
+  properties: { order_id: 'order_smoke_1' },
+  idempotency_key: 'order_smoke_1',
+});
+const serverGoal = () => fetch(BASE + '/api/v1/goals', {
+  method: 'POST',
+  headers: { authorization: `Bearer ${site.api_key}`, 'content-type': 'application/json' },
+  body: serverGoalBody,
+});
+const serverGoalFirst = await serverGoal();
+const serverGoalRetry = await serverGoal();
+assert(serverGoalFirst.ok && (await serverGoalRetry.json()).duplicate === true, 'server goal retry is idempotent');
+const goalsAfterServer = (await call(`/api/sites/${site.id}/breakdown?period=today&dim=goal`)).body;
+assert(goalsAfterServer.find((goal) => goal.label === 'order_confirmed')?.pageviews === 1, 'server goal uses requested session once');
+
 // --- Payments that arrive with EMPTY metadata (like Dodo payment links can) ---
 // 1. Return page: webhook first, then the buyer lands on /thanks?payment_id=...
 const vid2 = crypto.randomUUID(), sid2 = crypto.randomUUID();
