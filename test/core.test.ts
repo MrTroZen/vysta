@@ -8,6 +8,28 @@ import { bucketLabels, resolveRange, startOfDay, tzOffset } from '../src/worker/
 import { isBot, parseUA } from '../src/worker/lib/ua';
 
 describe('classify', () => {
+  const sourceFixtures = [
+    ['google.co.uk', 'Google', 'Organic Search'],
+    ['www.bing.com', 'Bing', 'Organic Search'],
+    ['duckduckgo.com', 'DuckDuckGo', 'Organic Search'],
+    ['search.yahoo.com', 'Yahoo', 'Organic Search'],
+    ['m.facebook.com', 'Facebook', 'Organic Social'],
+    ['l.instagram.com', 'Instagram', 'Organic Social'],
+    ['lnkd.in', 'LinkedIn', 'Organic Social'],
+    ['mobile.twitter.com', 'X', 'Organic Social'],
+    ['out.reddit.com', 'Reddit', 'Organic Social'],
+    ['m.youtube.com', 'YouTube', 'Organic Social'],
+    ['vm.tiktok.com', 'TikTok', 'Organic Social'],
+    ['chatgpt.com', 'ChatGPT', 'AI'],
+    ['www.perplexity.ai', 'Perplexity', 'AI'],
+    ['claude.ai', 'Claude', 'AI'],
+    ['gemini.google.com', 'Gemini', 'AI'],
+  ] as const;
+
+  it.each(sourceFixtures)('maps %s to %s / %s', (referrerDomain, source, channel) => {
+    expect(classify({ referrerDomain })).toMatchObject({ source, channel });
+  });
+
   it('maps t.co to X / social', () => {
     expect(classify({ referrerDomain: 't.co' })).toMatchObject({ source: 'X', channel: 'Organic Social' });
   });
@@ -20,6 +42,24 @@ describe('classify', () => {
   it('lets ref/utm tags win over the referrer', () => {
     expect(classify({ referrerDomain: 'google.com', ref: 'producthunt' })).toMatchObject({ source: 'Product Hunt' });
     expect(classify({ referrerDomain: null, ref: 'my-newsletter-42' })).toMatchObject({ source: 'my-newsletter-42', channel: 'Referral' });
+  });
+  it('gives utm_source precedence over ref when both are present', () => {
+    expect(classify({ referrerDomain: null, utmSource: 'linkedin', ref: 'reddit' })).toMatchObject({
+      source: 'LinkedIn',
+      channel: 'Organic Social',
+    });
+  });
+  it('currently lets a known referrer override an unknown explicit source tag', () => {
+    expect(classify({ referrerDomain: 'google.com', utmSource: 'partner-42' })).toMatchObject({
+      source: 'Google',
+      channel: 'Organic Search',
+    });
+  });
+  it('keeps a generic external referrer as its source', () => {
+    expect(classify({ referrerDomain: 'news.example.org' })).toMatchObject({
+      source: 'news.example.org',
+      channel: 'Referral',
+    });
   });
   it('detects paid and email by medium', () => {
     expect(classify({ referrerDomain: 'google.com', utmMedium: 'cpc' }).channel).toBe('Paid');
@@ -44,6 +84,14 @@ describe('user agents', () => {
     expect(isBot('Mozilla/5.0 HeadlessChrome/120')).toBe(true);
     expect(isBot('')).toBe(true);
     expect(isBot('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/129 Safari/537.36')).toBe(false);
+  });
+  it('separates automation from legitimate privacy browsers', () => {
+    expect(isBot('Mozilla/5.0 AppleWebKit/537.36 Chrome/129 Safari/537.36 Brave/1.71')).toBe(false);
+    expect(isBot('Mozilla/5.0 AppleWebKit/537.36 Chrome/129 Safari/537.36 DuckDuckGo/7')).toBe(false);
+    expect(isBot('curl/8.10.1')).toBe(true);
+    expect(isBot('python-requests/2.32')).toBe(true);
+    // A scripted request that copies a normal browser UA is intentionally indistinguishable here.
+    expect(isBot('Mozilla/5.0 AppleWebKit/537.36 Chrome/129 Safari/537.36')).toBe(false);
   });
 });
 
@@ -83,6 +131,11 @@ describe('time ranges', () => {
   it('weekly buckets start on Monday', () => {
     const r = resolveRange({ period: '30d', granularity: 'week' }, 'UTC', 0, now);
     for (const l of bucketLabels(r, 0)) expect(new Date(l + 'T00:00:00Z').getUTCDay()).toBe(1);
+  });
+  it('characterizes the current single-offset behavior on a DST transition day', () => {
+    const afterLondonSpringForward = Date.UTC(2026, 2, 29, 12, 0);
+    // The implementation applies the noon offset to midnight as well, producing 23:00Z.
+    expect(startOfDay(afterLondonSpringForward, 'Europe/London')).toBe(Date.UTC(2026, 2, 28, 23, 0));
   });
 });
 
