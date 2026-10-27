@@ -1,6 +1,6 @@
 # Vysta data accuracy audit and test plan
 
-Audit date: 2026-10-27. This is the Phase 5 audit/definition/test/bug-list deliverable. No analytics behavior or D1 schema was changed.
+Audit date: 2026-10-27. The Phase 5 audit was the baseline; this document now records the completed reporting time-base and DST boundary corrections. No D1 schema or stored raw data was changed.
 
 Read `ANALYTICS_SEMANTICS.md` first for the exact definitions and one-visitor lifecycle.
 
@@ -8,14 +8,12 @@ Read `ANALYTICS_SEMANTICS.md` first for the exact definitions and one-visitor li
 
 Vysta's basic first-party visitor continuity, normal 30-minute browser session rotation, domain validation, common source classification, page/goal storage, and bot denylist are understandable and now substantially better characterized by deterministic tests.
 
-The data is not yet trustworthy enough for precise internal daily/channel/conversion decisions. Directional page and source exploration is useful, but four issues can materially distort totals or attribution:
+The full analytics product is not yet trustworthy enough for every precise internal channel/conversion decision. Reporting-period pageview and timezone defects are now corrected and protected by real SQLite/D1-compatible fixtures. The remaining high-impact issues are:
 
-1. overview pageviews/duration/bounces are mutable session counters selected and bucketed by session start rather than event time;
-2. browser events have no idempotency key, so replays, duplicate script instances, and duplicate listeners count again;
-3. date boundaries are wrong on some DST transition days;
-4. explicit unknown UTM/ref tags can be replaced by a known HTTP referrer in the derived Source.
+1. browser events have no idempotency key, so replays, duplicate script instances, and duplicate listeners count again;
+2. explicit unknown UTM/ref tags can be replaced by a known HTTP referrer in the derived Source.
 
-Engaged time should be treated as a visible-tab estimate, not human attention, and it currently double-counts simultaneous visible tabs. Goal/conversion numbers require care because client goals are intentionally interaction signals, the server endpoint is not idempotent, and some report denominators use a different time basis.
+Engaged time should be treated as a visible-tab estimate, not human attention, and it currently double-counts simultaneous visible tabs. Goal/conversion numbers require care because client goals are intentionally interaction signals and the server endpoint is not idempotent. Reporting clocks are now explicit and consistent with each metric's documented basis.
 
 ## Accuracy test matrix
 
@@ -46,9 +44,9 @@ Status legend:
 | Normal navigation | Same SID while cookie is live; pageviews increment one session | Automated, Smoke |
 | Return under 30 minutes | Same SID and sliding refresh | Automated |
 | Return over 30 minutes with no sends | Same VID, new SID | Automated |
-| Midnight boundary | Session remains one session; overview assigns all mutable counters to start day | Characterized in SQL; real D1 boundary fixture is a Gap |
-| Site timezone boundary | Range uses site-local midnight with one offset for the calculation | Automated |
-| DST transition boundary | Current London spring-forward result is one hour early | Automated characterization; confirmed bug |
+| Midnight boundary | Session remains one session; pageviews/goals use event time while session-quality metrics use session start | Automated with SQLite/D1-compatible A-H boundary fixture |
+| Site timezone boundary | Range resolves each local midnight with the offset in force at that instant | Automated |
+| DST transition boundary | London spring/fall ranges and per-row buckets use the correct offset | Automated with event-total fixtures |
 | Old SID replay | Server accepts and updates old matching session; no server timeout | Gap at endpoint level; confirmed by code |
 | Visitor/session mismatch | Event is silently dropped; ping update is visitor-bound | Automated |
 
@@ -150,19 +148,23 @@ Status legend:
 
 ## Automated characterization added
 
-The Phase 5 suite adds two test files while preserving production behavior:
+The Phase 5 suite added characterization tests. The boundary fix adds real SQLite/D1-compatible reporting fixtures:
 
 - `test/tracker.test.ts`: a dependency-free VM browser harness covering cookie identity, sliding session expiry, subdomains/tabs, SPA navigation, hash/query behavior, goals and pre-load queues, duplicate script inclusion, engaged time, beacon/fetch fallback, no retry, opt-out/webdriver/localhost suppression, and URL scrubbing.
 - `test/analytics.test.ts`: D1 statement/result fakes covering session/visitor/event creation, attribution capture, self-referrals, session mismatch, ping limits, replay behavior, goals, KPI formulas, ordered funnels, realtime windows, and server-side goal selection/fields.
 - `test/core.test.ts` now has fixture-based major source coverage, explicit precedence cases, privacy-browser/bot separation, generic referrals, and DST-boundary characterization.
+- `test/reporting-time.test.ts`: fixed A-H cross-midnight/range-start/range-end/previous/daily/hourly assertions against the real migration schema.
+- `test/timezone-reporting.test.ts`: Europe/London GMT-to-BST and BST-to-GMT event totals, repeated/missing hour buckets, previous local-day comparison, plus Asia/Dhaka regression coverage.
 
 The suite is deterministic: timestamps are fixed, network calls are captured locally, and no external site is needed.
 
 ## Confirmed accuracy defects
 
-These are defects against Vysta's own comments, UI promises, or internally consistent range/idempotency expectations. None was fixed in this phase.
+These are defects against Vysta's own comments, UI promises, or internally consistent range/idempotency expectations. Resolution notes distinguish the two boundary defects fixed after the Phase 5 baseline.
 
 ### P0-1: overview pageviews and related session counters use the wrong time basis
+
+**RESOLVED:** Overview Visitors/Pageviews and traffic series now query pageview events by `events.ts`. Session count, bounce, and average duration remain session-start cohorts. Goal reports remain goal-event-time based and money remains payment-time based. Session dimensions join in-range pageview events to the stored session snapshot. The site-list 24-hour visitor count also uses pageview event time.
 
 **EXPECTED:** A selected day/hour/custom range explains activity in that range, and the overview/chart agrees with the event-based page breakdown.
 
@@ -193,6 +195,8 @@ These are defects against Vysta's own comments, UI promises, or internally consi
 **FIX:** Add a versioned singleton guard before any side effects. A later compatible instance should reuse the public API/queue and not reinstall hooks. Pair this with server idempotency.
 
 ### P0-4: site-time midnight is wrong on some DST transition days
+
+**RESOLVED:** Local dates are converted to zoned midnights using the offset at the resolved instant. Calendar ranges step by local dates, SQL chart buckets use a generated per-timestamp timezone-offset expression across transitions, repeated fall-back hours are combined once, and full-local-day previous comparisons shift by local calendar days.
 
 **EXPECTED:** `startOfDay` returns the UTC instant of local midnight for the site date.
 
@@ -244,13 +248,15 @@ These are defects against Vysta's own comments, UI promises, or internally consi
 
 ### P1-3: goal conversion numerator and denominator can select different populations
 
+**TIME-BASE PORTION RESOLVED:** Goal visitors and overview visitors now both use event timestamps in the selected window. The numerator is goal-active visitors and the denominator is pageview-active visitors, which is the documented product ratio rather than a session-start cohort.
+
 **EXPECTED:** A goal conversion percentage uses a coherent population/window.
 
-**ACTUAL:** Goal visitors use goal `events.ts`; total visitors use session `started_at`. A session crossing the range boundary can put a goal in the numerator while excluding its visitor from the denominator.
+**ACTUAL:** Goal visitors use goal `events.ts`; total visitors use pageview `events.ts`. A visitor can still complete a goal inside a narrow range without an in-range pageview, so the two event populations are not necessarily identical.
 
 **IMPACT:** Conversion can be misleading or exceed 100% in narrow/custom ranges.
 
-**FIX:** Define conversion cohort semantics (event-window visitors or session-start cohort) and query both sides consistently.
+**FOLLOW-UP:** Decide whether the documented event-window ratio is sufficient or whether the UI should instead expose a stricter pageview-to-goal cohort. That is a product-semantic decision, not a timestamp-boundary defect.
 
 ### P1-4: truncated goal properties can cease to be valid JSON
 
@@ -455,9 +461,8 @@ Rejected requests create an abuse-accounting problem: writing one D1 row per rej
 - Payment records have provider-ID idempotency and deliberately conservative matching behavior.
 - Test clocks are fixed, and no assertions were weakened to hide current behavior.
 
-## Missing automated tests after this phase
+## Missing automated tests after the boundary fixes
 
-- real D1 migration + cross-midnight/range-boundary integration fixture;
 - real Next.js router fixture and browser back/forward at three navigation styles;
 - real concurrency race between initial pageview and goal/outbound;
 - handler-level malformed/oversized collection matrix and response/counter verification;
@@ -473,8 +478,8 @@ Rejected requests create an abuse-accounting problem: writing one D1 row per rej
 
 ### Exact P0 sequence
 
-1. Decide and test the time basis for every overview KPI; add real D1 midnight/custom/DST fixtures; then correct pageview series/totals and conversion denominators.
-2. Fix zoned-day calculation with spring/fall fixtures before relying on local-day reports.
+1. **Complete:** define/test every KPI time basis and correct pageview totals, series, dimensions, and denominators.
+2. **Complete:** fix zoned-day calculation and per-row bucketing with spring/fall/non-DST fixtures.
 3. Approve and ship additive event-ID receipts: schema/Worker first, tracker second, server-goal idempotency third; expose duplicate diagnostics.
 4. Add the tracker singleton guard and test CMS/tag-manager double inclusion.
 5. Correct explicit attribution precedence while preserving raw UTM/ref fields and channel-medium rules; validate against the fixture table.
@@ -492,4 +497,4 @@ Rejected requests create an abuse-accounting problem: writing one D1 row per rej
 
 ## Trust decision
 
-**Current answer: not yet for precise internal business decisions.** Vysta can support qualitative exploration and directional validation of whether traffic/events are arriving. Payment records backed by provider IDs are materially stronger than client event counts. However, daily pageviews, time-based comparisons, source totals for custom tags, engaged duration, and client/server goal conversion should not yet be treated as audit-grade or decision-grade until the P0 boundary, idempotency, DST, attribution, and server-goal issues are fixed and revalidated.
+**Current answer: reporting boundaries are ready; the whole product is not yet audit-grade.** Daily/hourly pageview totals, custom date boundaries, local DST buckets, and their previous-period comparisons now have deterministic database-backed coverage. Event idempotency, duplicate tracker inclusion, custom-tag attribution, engaged duration, and the server-goal contract remain unresolved, so those areas should not yet be treated as decision-grade.

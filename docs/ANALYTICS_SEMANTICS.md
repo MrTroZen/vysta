@@ -7,7 +7,7 @@ Status: current behavior characterization, 2026-10-27. This document describes t
 - All stored timestamps and durations are integer milliseconds.
 - Visitor and session IDs are generated in the browser and scoped by `site_id` in D1.
 - Traffic acquisition is a session snapshot. It is set only when a session row is first inserted.
-- Overview traffic KPIs select sessions by `sessions.started_at`. Event breakdowns select events by `events.ts`. This distinction is important at range boundaries.
+- Reporting deliberately uses different clocks by metric: pageview traffic uses `events.ts`, session quality uses `sessions.started_at`, goals use goal `events.ts`, and money uses `payments.ts`.
 - The collector accepts `pageview`, `goal`, `outbound`, `ping`, and `identify`. Only the first three create `events` rows.
 - Current browser events have no event ID or idempotency key. Replaying a valid payload repeats its effects.
 - "Current tests" below means the deterministic Vitest suite after the Phase 5 characterization additions. `scripts/smoke.mjs` is a separate local end-to-end suite.
@@ -20,7 +20,7 @@ Status: current behavior characterization, 2026-10-27. This document describes t
 
 **Ingestion behavior.** `visitors` has primary key `(site_id, id)`. A session-creating event performs `INSERT OR IGNORE`, preserving the first `first_seen`. `identify` can create the visitor before a session exists and can later fill or overwrite non-null identity fields.
 
-**SQL/reporting behavior.** The overview's Visitors value is `COUNT(DISTINCT sessions.visitor_id)` among sessions whose `started_at` is in the selected range and match all filters. It is not a count of `visitors` rows created in the range. Page/goal breakdowns count distinct `events.visitor_id` by event time. The Users list groups matching sessions by visitor.
+**SQL/reporting behavior.** The overview's Visitors value is `COUNT(DISTINCT events.visitor_id)` among pageview events whose `ts` is in the selected range and whose session matches all filters. It is not a count of `visitors` rows created in the range. Page/goal breakdowns also count distinct `events.visitor_id` by event time. The Users list remains a session-start cohort grouped by visitor.
 
 **Known edge cases.** Cookie clearing, privacy expiration, a different browser, an incorrectly scoped `data-domain`, or a public-suffix/cookie policy failure creates a new visitor. A forged plausible browser request can choose any valid visitor ID. Two tabs normally share the visitor. The stable ID lasts one year from its most recent tracker use, not one year from first visit.
 
@@ -80,7 +80,7 @@ Status: current behavior characterization, 2026-10-27. This document describes t
 
 **Ingestion behavior.** An accepted pageview increments `sessions.pageviews`, updates `exit_page` and `last_seen_at`, appends a `pageview` event, and may claim a Dodo payment ID from the URL. Stored event paths are decoded when possible, have one trailing slash removed except `/`, omit all query/hash data, and are clipped to 500 characters.
 
-**SQL/reporting behavior.** Overview Pageviews is `SUM(sessions.pageviews)` for sessions started in the range. Page breakdowns use `COUNT(*)` over pageview events whose `events.ts` is in the range. These can disagree at range boundaries. The overview series also sums session counters in the session-start bucket, so every pageview in a session is charted at session start.
+**SQL/reporting behavior.** Overview Pageviews and the traffic series use `COUNT(*)` over pageview events whose `events.ts` is in the selected range. Each pageview is assigned to the site-local hour/day/week/month containing its own event timestamp. Page breakdowns use the same pageview-event clock.
 
 **Known edge cases.** Duplicate script tags each send and install their own hooks/listeners. Two tabs intentionally create separate pageviews but share session/visitor IDs. Query-only views are distinct at collection but collapse onto the same stored path. Framework router behavior not implemented through History API is not observed. There is no replay deduplication.
 
@@ -96,7 +96,7 @@ Status: current behavior characterization, 2026-10-27. This document describes t
 
 **Known edge cases.** The status is mutable for the lifetime of the session and can change after the report boundary. Duplicate goals suppress bounce; duplicate pageviews prevent bounce. A goal/server-goal attached to the session prevents bounce regardless of intent.
 
-**Test protection.** The SQL formula and 50% smoke result are protected. Boundary mutation and duplicate effects are documented but do not yet have a real D1 integration fixture.
+**Test protection.** The SQL formula and 50% smoke result are protected. Cross-boundary session/pageview ownership now has a real SQLite fixture using the D1 migration; later mutation and duplicate effects remain documented risks.
 
 ### 8. Bounce rate
 
@@ -144,7 +144,7 @@ Status: current behavior characterization, 2026-10-27. This document describes t
 
 **Ingestion behavior.** `entry_page` is the normalized path of whichever pageview, goal, or outbound event first creates the session. It is immutable afterward.
 
-**SQL/reporting behavior.** Entry-page breakdown groups session rows and counts distinct visitors; it therefore uses session start time.
+**SQL/reporting behavior.** Entry-page breakdown joins in-range pageview events to their sessions, groups by the session's entry-page snapshot, counts distinct event visitors, and counts pageview events. Its reporting clock is pageview `events.ts`.
 
 **Known edge cases.** An early goal/outbound can become the entry before the first pageview. Query and hash are absent. The hostname is separately fixed from that same first event.
 
@@ -166,7 +166,7 @@ Status: current behavior characterization, 2026-10-27. This document describes t
 
 **Actual precedence.** `utm_source` is chosen ahead of `ref`. However, an unknown explicit tag can be overridden by a known referrer because known-source lookup falls through to the referrer before the raw tag is selected. This contradicts the code comment that an explicit tag wins.
 
-**SQL/reporting behavior.** Source breakdown groups session rows and counts distinct visitors/pageviews; dashboard labels it "Referrer" in several places.
+**SQL/reporting behavior.** Source breakdown joins in-range pageview events to the session acquisition snapshot, then counts distinct event visitors and pageview events. Its reporting clock is pageview `events.ts`; dashboard labels it "Referrer" in several places.
 
 **Known edge cases.** Case is canonicalized only for known sources. Unknown source strings keep trimmed original case. A medium without a source can yield `source=Direct/None` with a non-Direct channel.
 
@@ -176,7 +176,7 @@ Status: current behavior characterization, 2026-10-27. This document describes t
 
 **Ingestion behavior.** Channel precedence is: paid `utm_medium`; email `utm_medium`; known source; social `utm_medium`; any remaining tag/referrer as Referral; otherwise Direct. Allowed values are Direct, Organic Search, Organic Social, AI, Referral, Email, and Paid.
 
-**SQL/reporting behavior.** Stored on the session and grouped by session start time. Payment credit prefers a session where `channel != 'Direct'`.
+**SQL/reporting behavior.** Stored on the session. Traffic breakdowns group in-range pageview events by that session snapshot, so their reporting clock is pageview `events.ts`. Payment credit prefers a session where `channel != 'Direct'` and money remains selected by `payments.ts`.
 
 **Known edge cases.** A known AI/search/social source with `utm_medium=cpc` becomes Paid. An unknown source with `utm_medium=email` becomes Email. Medium normalization recognizes a finite regex vocabulary only.
 
@@ -234,9 +234,9 @@ Status: current behavior characterization, 2026-10-27. This document describes t
 
 **Server-side behavior.** `POST /api/v1/goals` authenticates by site API key, requires `visitor_id` and `name`, chooses that visitor's latest session across all time, increments it, and inserts the goal on its current `exit_page`. The endpoint ignores a supplied `session_id`. It reads `props`, while `docs/TRACKING.md` currently shows `properties`, so properties from that example are discarded. There is no idempotency key.
 
-**SQL/reporting behavior.** Goal rows show distinct visitors, total completions (the generic `pageviews` field in the breakdown response), revenue from visitors who completed the goal, and `distinct goal visitors / overview visitors` as the UI conversion percentage.
+**SQL/reporting behavior.** Goal rows show distinct visitors and total completions (the generic `pageviews` field in the breakdown response) by goal `events.ts`, plus revenue from visitors who completed the goal. The UI percentage is `distinct goal visitors / overview visitors`; both visitor populations are event-window populations, although the numerator requires a goal and the denominator requires a pageview.
 
-**Known edge cases.** Rapid/double listeners and replays count repeatedly. A duplicated tracker doubles click goals. A goal before the first pageview can create Direct attribution. Goal-event numerator and session-start denominator can use different populations at a range boundary. Client calls made before load are safe only when the embedding site installed a valid queue stub; the standard script tag alone does not create that stub before execution.
+**Known edge cases.** Rapid/double listeners and replays count repeatedly. A duplicated tracker doubles click goals. A goal before the first pageview can create Direct attribution. Goal-active visitors and pageview-active visitors can still be different event populations inside a narrow range. Client calls made before load are safe only when the embedding site installed a valid queue stub; the standard script tag alone does not create that stub before execution.
 
 **Test protection.** Declarative/API/queued goals, rapid duplicates, duplicate inclusion, ingestion, malformed empty names, properties, and smoke dashboard/funnel behavior are covered. The server-side handler needs focused unit coverage for latest-session selection and documented field compatibility.
 
@@ -256,13 +256,13 @@ Status: current behavior characterization, 2026-10-27. This document describes t
 
 Vysta currently uses more than one conversion rate:
 
-1. **Overview conversion rate:** distinct non-renewal paying customers divided by overview Visitors. Customers are distinct by `COALESCE(payment.visitor_id, payment.id)` for `kind='payment' AND renewal=0`; payments are selected by payment timestamp while visitors are selected by session start timestamp.
-2. **Goal conversion:** distinct visitors with a named goal event in the event-time range divided by overview Visitors in the session-start range.
+1. **Overview conversion rate:** distinct non-renewal paying customers divided by overview Visitors. Customers are distinct by `COALESCE(payment.visitor_id, payment.id)` for `kind='payment' AND renewal=0`; payments are selected by payment timestamp while visitors are pageview-active visitors selected by pageview event timestamp in the same range.
+2. **Goal conversion:** distinct visitors with a named goal event in the event-time range divided by pageview-active overview Visitors in the same event-time range.
 3. **Funnel conversion:** visitors reaching a step divided by visitors reaching step 1; drop-off compares with the prior step.
 
-**Known edge cases.** The first two can compare populations selected on different time fields and can exceed intuitive bounds at range edges. Unattributed payments count as customers using payment ID. Renewals do not add customers. Filters require attributed payments joined to a matching session.
+**Known edge cases.** The first two compare different event populations in one range and can exceed intuitive bounds when a payment or goal occurs without an in-range pageview. Unattributed payments count as customers using payment ID. Renewals do not add customers. Filters require attributed payments joined to a matching session.
 
-**Test protection.** Overview formula, goal smoke behavior, and funnel progression/drop-off inputs are protected. Cross-boundary denominator mismatch needs a real D1 fixture.
+**Test protection.** Overview formula, goal smoke behavior, funnel progression/drop-off inputs, and cross-boundary event-time denominators are protected.
 
 ## One visitor, end to end
 
@@ -283,7 +283,7 @@ Assume a normal browser, accepted transports, no competing tab, and these symbol
    - one `visitors` row `(W1,V1,first_seen=T1)`;
    - one `sessions` row `(W1,S1,V1,started_at=T1,last_seen_at=T1,pageviews=1,goals=0,duration=0,entry_page=P1,exit_page=P1)` plus acquisition/UA/geo snapshot;
    - one `events` row `(session=S1,visitor=V1,ts=T1,type=pageview,path=P1)`.
-6. Overview includes the visitor/session if `T1` is inside the selected session-start range. Page breakdown includes the event if `T1` is inside the event-time range.
+6. Overview includes the visitor/pageview if `T1` is inside the event-time range and includes the Session if the session's `started_at` is inside the session-start range. Page breakdown uses the same event-time test as overview traffic.
 
 ### Internal navigation and second pageview
 
@@ -319,26 +319,45 @@ Assume a normal browser, accepted transports, no competing tab, and these symbol
 
 ## Important range semantics
 
-Overview traffic KPIs use this conceptual predicate:
+All ranges are half-open: `timestamp >= range.from AND timestamp < range.to`. Custom dates are inclusive local calendar dates in the configured IANA timezone. Local midnights are resolved with the offset in force at that midnight, and chart bucketing uses the offset in force at each row timestamp. A spring-forward day therefore has 23 elapsed hours; a fall-back day has 25 elapsed hours, with both occurrences of the repeated local hour combined under one label.
+
+The reporting query audit assigns these clocks deliberately:
+
+| Surface / metric | Period timestamp | Reason |
+| --- | --- | --- |
+| Overview Visitors, Pageviews, traffic chart | pageview `events.ts` | Measures pageview activity that occurred inside the range |
+| Page and session-dimension traffic breakdowns | pageview `events.ts`; joined session supplies dimensions | Keeps totals/buckets aligned while retaining acquisition and device snapshots |
+| Sessions, Bounce rate, Average session duration | `sessions.started_at` | These are properties of the session-start cohort |
+| Users list | `sessions.started_at` | The list describes visitors with a session beginning in the range |
+| Goals, goal/outbound breakdowns, funnels | relevant `events.ts` | Measures completion/activity when the event occurred |
+| Revenue, Payments, Customers, revenue chart | `payments.ts` | Measures money when the payment/refund record occurred |
+| Site-list Visitors (last 24 hours) | pageview `events.ts` | Measures pageview-active visitors in the rolling window |
+| Online / Live presence | `sessions.last_seen_at`, with the existing stale-session `started_at` guard | Presence is based on recent activity, not a reporting-period cohort |
+| Visitor profile/history | no report range; ordered by each row's own timestamp | It is a history view |
+
+Session-cohort metrics use:
 
 ```sql
 sessions.started_at >= range.from AND sessions.started_at < range.to
 ```
 
-They then read mutable session counters. Event breakdowns use:
+Pageview and goal/outbound activity use:
 
 ```sql
 events.ts >= range.from AND events.ts < range.to
 ```
 
-Consequences:
+Payments use the equivalent predicate on `payments.ts`.
 
-- A session started at 23:59 with a pageview at 00:01 assigns both pageviews to the prior day's overview/session-start chart bucket.
-- A session started before a custom range but active inside it contributes no overview visitor/session/pageviews/duration, while its page event can appear in the Page breakdown.
-- A later pageview or goal can retroactively change pageview/bounce values for the period containing the session start.
-- Payment KPIs use payment time, so overview conversion can compare payment-time customers with session-start-time visitors.
+Consequences and deliberate differences:
 
-These are current semantics, not recommended future semantics.
+- A session started at 23:59 and a pageview at 00:01 contributes one Session to the first day and that pageview/visitor to the second day.
+- A session started before a custom range but active inside it contributes in-range pageviews/visitor activity, but not a new Session, bounce, or average-duration sample.
+- Bounce and average duration can still change later because they deliberately describe mutable session rows in the session-start cohort. Pageview totals do not move with them.
+- Overview customer conversion compares payment-time customers with pageview-active visitors in the same range. It is a cross-event business ratio, not a session conversion cohort.
+- A full-local-day previous comparison shifts by the same number of local calendar days. Other rolling/partial ranges compare the immediately preceding equal elapsed duration.
+
+These are current semantics after the reporting boundary correction.
 
 ## Data retained and data not retained
 

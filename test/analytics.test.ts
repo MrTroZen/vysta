@@ -267,20 +267,24 @@ describe('collector validation characterization', () => {
 });
 
 describe('reporting semantics characterization', () => {
-  it('derives overview totals and rates from session aggregates', async () => {
+  it('derives traffic from pageview events and visit quality from session cohorts', async () => {
     let batchCall = 0;
     const f = fakeDb({
       batch: (statements) => {
         batchCall++;
         expect(statements[0].sql).toContain('s.started_at >= ?');
         expect(statements[0].sql).toContain('s.pageviews <= 1 AND s.goals = 0');
+        expect(statements[2].sql).toContain("e.type = 'pageview'");
+        expect(statements[2].sql).toContain('e.ts >= ?');
         return [
-          [{ visitors: 2, sessions: 3, pageviews: 7, bounces: 2, avg_duration: 10_000.4 }],
-          [{ visitors: 1, sessions: 1, pageviews: 1, bounces: 1, avg_duration: 0 }],
+          [{ sessions: 3, bounces: 2, avg_duration: 10_000.4 }],
+          [{ sessions: 1, bounces: 1, avg_duration: 0 }],
+          [{ visitors: 2, pageviews: 7 }],
+          [{ visitors: 1, pageviews: 1 }],
           [{ revenue: 12_500, customers: 1, payments: 2 }],
           [{ revenue: 0, customers: 0, payments: 0 }],
           [{ n: 2 }],
-          [{ b: '2026-10-23T12:00', visitors: 2, sessions: 3, pageviews: 7 }],
+          [{ b: '2026-10-23T12:00', visitors: 2, pageviews: 7 }],
           [{ b: '2026-10-23T12:00', revenue: 12_500, payments: 2 }],
         ];
       },

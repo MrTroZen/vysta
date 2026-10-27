@@ -145,20 +145,24 @@ const publicSite = (s: Site) => ({ ...s, dodo_webhook_secret: s.dodo_webhook_sec
 app.get('/api/sites', async (c) => {
   const now = Date.now();
   const access = siteAccessSql(c.env, c.get('user'));
-  const [sites, stats] = await c.env.DB.batch([
+  const [sites, traffic, presence] = await c.env.DB.batch([
     c.env.DB.prepare(`SELECT s.* FROM sites s WHERE ${access.sql} ORDER BY s.created_at`).bind(...access.params),
     c.env.DB.prepare(
-      `SELECT site_id, COUNT(DISTINCT visitor_id) AS visitors,
-              COUNT(DISTINCT CASE WHEN last_seen_at > ? THEN visitor_id END) AS online
-       FROM sessions WHERE started_at > ? GROUP BY site_id`,
-    ).bind(now - 5 * 60_000, now - 86_400_000),
+      `SELECT site_id, COUNT(DISTINCT visitor_id) AS visitors
+       FROM events WHERE type = 'pageview' AND ts > ? GROUP BY site_id`,
+    ).bind(now - 86_400_000),
+    c.env.DB.prepare(
+      `SELECT site_id, COUNT(DISTINCT visitor_id) AS online
+       FROM sessions WHERE started_at > ? AND last_seen_at > ? GROUP BY site_id`,
+    ).bind(now - 86_400_000, now - 5 * 60_000),
   ]);
-  const by = new Map((stats.results as any[]).map((r) => [r.site_id, r]));
+  const visitorsBy = new Map((traffic.results as any[]).map((r) => [r.site_id, r.visitors]));
+  const onlineBy = new Map((presence.results as any[]).map((r) => [r.site_id, r.online]));
   return c.json(
     (sites.results as unknown as Site[]).map((s) => ({
       ...publicSite(s),
-      visitors24h: by.get(s.id)?.visitors ?? 0,
-      online: by.get(s.id)?.online ?? 0,
+      visitors24h: visitorsBy.get(s.id) ?? 0,
+      online: onlineBy.get(s.id) ?? 0,
     })),
   );
 });

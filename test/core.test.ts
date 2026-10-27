@@ -4,7 +4,7 @@ import { classify } from '../src/shared/sources';
 import { belongsTo, normalizePath } from '../src/worker/collect';
 import { verifyStandardWebhook } from '../src/worker/lib/crypto';
 import { isAllowedOrigin, SECURITY_HEADERS } from '../src/worker/lib/security';
-import { bucketLabels, resolveRange, startOfDay, tzOffset } from '../src/worker/lib/time';
+import { bucketLabels, previousPeriodStart, resolveRange, startOfDay, tzOffset } from '../src/worker/lib/time';
 import { isBot, parseUA } from '../src/worker/lib/ua';
 
 describe('classify', () => {
@@ -132,10 +132,46 @@ describe('time ranges', () => {
     const r = resolveRange({ period: '30d', granularity: 'week' }, 'UTC', 0, now);
     for (const l of bucketLabels(r, 0)) expect(new Date(l + 'T00:00:00Z').getUTCDay()).toBe(1);
   });
-  it('characterizes the current single-offset behavior on a DST transition day', () => {
+  it('uses the offset at local midnight on a DST transition day', () => {
     const afterLondonSpringForward = Date.UTC(2026, 2, 29, 12, 0);
-    // The implementation applies the noon offset to midnight as well, producing 23:00Z.
-    expect(startOfDay(afterLondonSpringForward, 'Europe/London')).toBe(Date.UTC(2026, 2, 28, 23, 0));
+    expect(startOfDay(afterLondonSpringForward, 'Europe/London')).toBe(Date.UTC(2026, 2, 29, 0, 0));
+  });
+  it('makes the London spring-forward day 23 hours with no local 01:00 bucket', () => {
+    const r = resolveRange(
+      { period: 'custom', from: '2026-03-29', to: '2026-03-29', granularity: 'hour' },
+      'Europe/London',
+      0,
+      Date.UTC(2026, 2, 30, 12),
+    );
+    expect(r).toMatchObject({ from: Date.UTC(2026, 2, 29), to: Date.UTC(2026, 2, 29, 23) });
+    const labels = bucketLabels(r, 'Europe/London');
+    expect(labels).toHaveLength(23);
+    expect(labels).not.toContain('2026-03-29T01:00');
+    expect(previousPeriodStart(r, 'Europe/London')).toBe(Date.UTC(2026, 2, 28));
+  });
+  it('makes the London fall-back day 25 hours and merges the repeated local hour label', () => {
+    const r = resolveRange(
+      { period: 'custom', from: '2026-10-25', to: '2026-10-25', granularity: 'hour' },
+      'Europe/London',
+      0,
+      Date.UTC(2026, 9, 26, 12),
+    );
+    expect(r).toMatchObject({ from: Date.UTC(2026, 9, 24, 23), to: Date.UTC(2026, 9, 26) });
+    const labels = bucketLabels(r, 'Europe/London');
+    expect(labels).toHaveLength(24);
+    expect(labels.filter((label) => label === '2026-10-25T01:00')).toHaveLength(1);
+    expect(previousPeriodStart(r, 'Europe/London')).toBe(Date.UTC(2026, 9, 23, 23));
+  });
+  it('keeps a non-DST Dhaka day at 24 hours', () => {
+    const r = resolveRange(
+      { period: 'custom', from: '2026-06-01', to: '2026-06-01', granularity: 'hour' },
+      'Asia/Dhaka',
+      0,
+      Date.UTC(2026, 5, 2, 12),
+    );
+    expect(r.to - r.from).toBe(24 * 3_600_000);
+    expect(r.from).toBe(Date.UTC(2026, 4, 31, 18));
+    expect(bucketLabels(r, 'Asia/Dhaka')).toHaveLength(24);
   });
 });
 

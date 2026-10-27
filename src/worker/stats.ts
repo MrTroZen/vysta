@@ -1,6 +1,6 @@
 import type { Context } from 'hono';
 import type { AppEnv, Site } from './env';
-import { bucketLabels, bucketSql, resolveRange, tzOffset, type Range } from './lib/time';
+import { bucketLabels, bucketSql, previousPeriodStart, resolveRange, timezoneOffsetSql, type Range } from './lib/time';
 import { currencyDecimals } from './payments';
 
 /** Filters that live on the session row (clicking a row in the dashboard adds one of these). */
@@ -72,20 +72,28 @@ interface Ctx {
   site: Site;
   range: Range;
   filters: Filters;
-  offset: number;
 }
 
 export function makeCtx(c: Context<AppEnv>): Ctx {
   const site = c.get('site');
   const q = c.req.query();
   const range = resolveRange(q, site.timezone, site.created_at);
-  return { db: c.env.DB, site, range, filters: parseFilters(q.filters), offset: tzOffset(site.timezone, range.to) };
+  return { db: c.env.DB, site, range, filters: parseFilters(q.filters) };
 }
 
 function sessionsWhere(ctx: Ctx, from = ctx.range.from, to = ctx.range.to) {
   const f = filterSql(ctx.filters);
   return {
     sql: `s.site_id = ? AND s.started_at >= ? AND s.started_at < ?${f.sql}`,
+    params: [ctx.site.id, from, to, ...f.params],
+  };
+}
+
+/** Pageview activity in the period; session columns remain available for dashboard filters and dimensions. */
+function pageviewsWhere(ctx: Ctx, from = ctx.range.from, to = ctx.range.to) {
+  const f = filterSql(ctx.filters);
+  return {
+    sql: `e.site_id = ? AND e.type = 'pageview' AND e.ts >= ? AND e.ts < ?${f.sql}`,
     params: [ctx.site.id, from, to, ...f.params],
   };
 }
@@ -103,11 +111,16 @@ function paymentsFrom(ctx: Ctx, from = ctx.range.from, to = ctx.range.to) {
   };
 }
 
-const KPI_SQL = (where: string) => `
-  SELECT COUNT(DISTINCT s.visitor_id) AS visitors, COUNT(*) AS sessions, COALESCE(SUM(s.pageviews), 0) AS pageviews,
+const SESSION_KPI_SQL = (where: string) => `
+  SELECT COUNT(*) AS sessions,
          COALESCE(SUM(CASE WHEN s.pageviews <= 1 AND s.goals = 0 THEN 1 ELSE 0 END), 0) AS bounces,
          COALESCE(AVG(s.duration), 0) AS avg_duration
   FROM sessions s WHERE ${where}`;
+
+const TRAFFIC_KPI_SQL = (where: string) => `
+  SELECT COUNT(DISTINCT e.visitor_id) AS visitors, COUNT(*) AS pageviews
+  FROM events e JOIN sessions s ON s.site_id = e.site_id AND s.id = e.session_id
+  WHERE ${where}`;
 
 const REVENUE_SQL = (from: string) => `
   SELECT COALESCE(SUM(p.amount), 0) AS revenue,
@@ -115,12 +128,14 @@ const REVENUE_SQL = (from: string) => `
          COALESCE(SUM(CASE WHEN p.kind = 'payment' THEN 1 ELSE 0 END), 0) AS payments
   FROM ${from}`;
 
-interface KpiRow {
-  visitors: number;
+interface SessionKpiRow {
   sessions: number;
-  pageviews: number;
   bounces: number;
   avg_duration: number;
+}
+interface TrafficKpiRow {
+  visitors: number;
+  pageviews: number;
 }
 interface RevRow {
   revenue: number;
@@ -128,36 +143,40 @@ interface RevRow {
   payments: number;
 }
 
-function kpis(k: KpiRow, r: RevRow) {
+function kpis(s: SessionKpiRow, t: TrafficKpiRow, r: RevRow) {
   return {
-    visitors: k.visitors,
-    sessions: k.sessions,
-    pageviews: k.pageviews,
-    bounceRate: k.sessions ? k.bounces / k.sessions : 0,
-    avgDuration: Math.round(k.avg_duration),
+    visitors: t.visitors,
+    sessions: s.sessions,
+    pageviews: t.pageviews,
+    bounceRate: s.sessions ? s.bounces / s.sessions : 0,
+    avgDuration: Math.round(s.avg_duration),
     revenue: r.revenue,
     payments: r.payments,
     customers: r.customers,
-    conversionRate: k.visitors ? r.customers / k.visitors : 0,
-    revenuePerVisitor: k.visitors ? r.revenue / k.visitors : 0,
+    conversionRate: t.visitors ? r.customers / t.visitors : 0,
+    revenuePerVisitor: t.visitors ? r.revenue / t.visitors : 0,
   };
 }
 
 /** Top numbers + chart. */
 export async function overview(ctx: Ctx) {
   const { db, range, site } = ctx;
-  const prevFrom = range.from - (range.to - range.from);
-  const cur = sessionsWhere(ctx);
-  const prev = sessionsWhere(ctx, prevFrom, range.from);
+  const prevFrom = previousPeriodStart(range, site.timezone);
+  const curSessions = sessionsWhere(ctx);
+  const prevSessions = sessionsWhere(ctx, prevFrom, range.from);
+  const curTraffic = pageviewsWhere(ctx);
+  const prevTraffic = pageviewsWhere(ctx, prevFrom, range.from);
   const curPay = paymentsFrom(ctx);
   const prevPay = paymentsFrom(ctx, prevFrom, range.from);
-  const sb = bucketSql('s.started_at', range.granularity, ctx.offset);
-  const pb = bucketSql('p.ts', range.granularity, ctx.offset);
+  const eb = bucketSql('e.ts', range.granularity, timezoneOffsetSql('e.ts', site.timezone, range.from, range.to));
+  const pb = bucketSql('p.ts', range.granularity, timezoneOffsetSql('p.ts', site.timezone, range.from, range.to));
   const now = Date.now();
 
-  const [k1, k0, r1, r0, online, ts, tr] = await db.batch([
-    db.prepare(KPI_SQL(cur.sql)).bind(...cur.params),
-    db.prepare(KPI_SQL(prev.sql)).bind(...prev.params),
+  const [s1, s0, t1, t0, r1, r0, online, ts, tr] = await db.batch([
+    db.prepare(SESSION_KPI_SQL(curSessions.sql)).bind(...curSessions.params),
+    db.prepare(SESSION_KPI_SQL(prevSessions.sql)).bind(...prevSessions.params),
+    db.prepare(TRAFFIC_KPI_SQL(curTraffic.sql)).bind(...curTraffic.params),
+    db.prepare(TRAFFIC_KPI_SQL(prevTraffic.sql)).bind(...prevTraffic.params),
     db.prepare(REVENUE_SQL(curPay.sql)).bind(...curPay.params),
     db.prepare(REVENUE_SQL(prevPay.sql)).bind(...prevPay.params),
     db
@@ -165,10 +184,11 @@ export async function overview(ctx: Ctx) {
       .bind(site.id, now - 6 * 3_600_000, now - 5 * 60_000),
     db
       .prepare(
-        `SELECT ${sb} AS b, COUNT(DISTINCT s.visitor_id) AS visitors, COUNT(*) AS sessions, SUM(s.pageviews) AS pageviews
-         FROM sessions s WHERE ${cur.sql} GROUP BY b`,
+        `SELECT ${eb} AS b, COUNT(DISTINCT e.visitor_id) AS visitors, COUNT(*) AS pageviews
+         FROM events e JOIN sessions s ON s.site_id = e.site_id AND s.id = e.session_id
+         WHERE ${curTraffic.sql} GROUP BY b`,
       )
-      .bind(...cur.params),
+      .bind(...curTraffic.params),
     db
       .prepare(
         `SELECT ${pb} AS b, SUM(p.amount) AS revenue, SUM(CASE WHEN p.kind = 'payment' THEN 1 ELSE 0 END) AS payments
@@ -179,7 +199,7 @@ export async function overview(ctx: Ctx) {
 
   const visitorsBy = new Map((ts.results as any[]).map((r) => [r.b, r]));
   const revenueBy = new Map((tr.results as any[]).map((r) => [r.b, r]));
-  const labels = bucketLabels(range, ctx.offset);
+  const labels = bucketLabels(range, site.timezone);
   const series = labels.map((b) => ({
     bucket: b,
     visitors: visitorsBy.get(b)?.visitors ?? 0,
@@ -192,8 +212,8 @@ export async function overview(ctx: Ctx) {
     range,
     currency: site.currency,
     decimals: currencyDecimals(site.currency),
-    current: kpis(k1.results[0] as KpiRow, r1.results[0] as RevRow),
-    previous: kpis(k0.results[0] as KpiRow, r0.results[0] as RevRow),
+    current: kpis(s1.results[0] as SessionKpiRow, t1.results[0] as TrafficKpiRow, r1.results[0] as RevRow),
+    previous: kpis(s0.results[0] as SessionKpiRow, t0.results[0] as TrafficKpiRow, r0.results[0] as RevRow),
     online: (online.results[0] as { n: number }).n,
     series,
   };
@@ -237,7 +257,7 @@ export async function breakdown(ctx: Ctx, dim: string, limit = 100): Promise<Bre
 
   if (SESSION_DIMS[dim]) {
     const col = SESSION_DIMS[dim];
-    const w = sessionsWhere(ctx);
+    const traffic = pageviewsWhere(ctx);
     const pay = paymentsFrom(ctx);
     // Payments need the session columns even without filters.
     const payJoin = hasFilters(ctx.filters)
@@ -251,10 +271,11 @@ export async function breakdown(ctx: Ctx, dim: string, limit = 100): Promise<Bre
     const [v, r] = await db.batch([
       db
         .prepare(
-          `SELECT ${col} AS label, COUNT(DISTINCT s.visitor_id) AS visitors, SUM(s.pageviews) AS pageviews, ${extraCol} AS extra
-           FROM sessions s WHERE ${w.sql} GROUP BY label ORDER BY visitors DESC LIMIT ${lim}`,
+          `SELECT ${col} AS label, COUNT(DISTINCT e.visitor_id) AS visitors, COUNT(*) AS pageviews, ${extraCol} AS extra
+           FROM events e JOIN sessions s ON s.site_id = e.site_id AND s.id = e.session_id
+           WHERE ${traffic.sql} GROUP BY label ORDER BY visitors DESC LIMIT ${lim}`,
         )
-        .bind(...w.params),
+        .bind(...traffic.params),
       db
         .prepare(
           `SELECT ${col} AS label, SUM(p.amount) AS revenue,
