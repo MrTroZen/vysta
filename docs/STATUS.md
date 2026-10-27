@@ -14,10 +14,11 @@ The first real tracked site is Qavyo Pricing.
 
 ## Verification
 
-- 100 tests pass across 7 test files.
+- 101 tests pass across 8 test files.
 - `npm run verify` runs typecheck, unit tests, and the production build.
 - `npm run verify:full` adds isolated self-hosted and hosted local smoke suites.
 - Final P0 review on 2026-10-28: targeted checks and `npm run verify:full` passed, including both smoke suites.
+- The site-deletion release-blocker fix has regression coverage for core analytics data and both idempotency receipt tables.
 
 ## Accuracy
 
@@ -25,10 +26,10 @@ The first real tracked site is Qavyo Pricing.
 - P0.3 duplicate initialization and site-scoped browser event idempotency are committed and verified on staging.
 - P0.4 explicit UTM/ref precedence over HTTP referrers is complete and verified on staging.
 - P0.5 server-goal session, property, recency, and idempotency contract is complete and verified on staging.
-- Staging Worker version: `32295438-2e81-4b24-8bc0-e999a0575332`.
+- Site deletion removes `ingestion_receipts` and `server_goal_receipts` without changing their ingestion semantics.
 - P0.1-P0.5 are not deployed to production.
-- The final P0 review found no runtime regression or contradiction between the five fixes; all 100 targeted assertions pass together.
-- `origin/main` now contains the complete P0.1-P0.5 source set; the exact reconciled branch still requires staging verification before production.
+- The final P0 review found no runtime regression or contradiction between the five fixes; all 101 targeted assertions pass together.
+- The complete P0 release candidate requires staging verification before production.
 - Reporting boundaries, browser event delivery, custom-source attribution, and keyed server confirmations are protected; P1 findings remain.
 
 ## Git
