@@ -162,15 +162,15 @@ Status: current behavior characterization, 2026-10-27. This document describes t
 
 ### 14. Source
 
-**Ingestion behavior.** Source is stored once on the session. The classifier computes `tag = utm_source || ref`. It looks for a known source using the tag, then the referrer domain. If a known match exists, its canonical name is used; otherwise the tag is used; otherwise the raw referrer domain; otherwise `Direct/None`.
+**Ingestion behavior.** Source is stored once on the session. The classifier computes `tag = utm_source || ref`. When a tag exists, it is canonicalized if it matches a known source and otherwise kept verbatim; the HTTP referrer is consulted only when no explicit tag exists. Without a tag, a known referrer uses its canonical source, an unknown referrer keeps its domain, and no referrer becomes `Direct/None`.
 
-**Actual precedence.** `utm_source` is chosen ahead of `ref`. However, an unknown explicit tag can be overridden by a known referrer because known-source lookup falls through to the referrer before the raw tag is selected. This contradicts the code comment that an explicit tag wins.
+**Precedence.** `utm_source` is chosen ahead of `ref`, and either explicit value is chosen ahead of the HTTP referrer. Paid and email media still override the channel; a known explicit source supplies its normal channel; social medium follows; and any remaining explicit tag is Referral.
 
 **SQL/reporting behavior.** Source breakdown joins in-range pageview events to the session acquisition snapshot, then counts distinct event visitors and pageview events. Its reporting clock is pageview `events.ts`; dashboard labels it "Referrer" in several places.
 
 **Known edge cases.** Case is canonicalized only for known sources. Unknown source strings keep trimmed original case. A medium without a source can yield `source=Direct/None` with a non-Direct channel.
 
-**Test protection.** Fixture tests cover major search, social, AI, email, paid, direct, and generic-referral sources plus both precedence behaviors.
+**Test protection.** Fixture tests cover major search, social, AI, email, paid, direct, and generic-referral sources; UTM-over-ref precedence; unknown explicit UTM/ref values against known referrers; and medium precedence.
 
 ### 15. Channel
 
@@ -202,7 +202,7 @@ Status: current behavior characterization, 2026-10-27. This document describes t
 
 **SQL/reporting behavior.** Values are exact-match filter/dimensions on sessions. Campaign maps to `utm_campaign`; Keyword maps to `utm_term`. UTM source and medium are filterable and available as API dimensions but are not primary dashboard tabs.
 
-**Known edge cases.** There is no cross-session campaign persistence. A direct return creates a Direct session without prior UTMs. Unknown explicit `utm_source` can be masked by a known referrer in the derived Source field even while raw `utm_source` remains stored. Duplicate query parameter behavior follows `URLSearchParams.get` (first value).
+**Known edge cases.** There is no cross-session campaign persistence. A direct return creates a Direct session without prior UTMs. Duplicate query parameter behavior follows `URLSearchParams.get` (first value).
 
 **Test protection.** Ingestion binds, precedence, paid/email/social medium behavior, and fixed source fixtures are automated.
 
@@ -212,7 +212,7 @@ Status: current behavior characterization, 2026-10-27. This document describes t
 
 **SQL/reporting behavior.** It is a session dimension/filter and appears alongside campaign information in journeys.
 
-**Known edge cases.** It has no persistence beyond the created session, can contain arbitrary user-entered text/PII, and loses to `utm_source`. A known referrer can override an unknown ref in derived Source.
+**Known edge cases.** It has no persistence beyond the created session, can contain arbitrary user-entered text/PII, and loses to `utm_source`.
 
 **Test protection.** Known/unknown ref behavior and UTM-over-ref precedence are automated.
 

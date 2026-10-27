@@ -173,6 +173,23 @@ describe('event ingestion characterization', () => {
     ]);
   });
 
+  it('keeps explicit attribution while discarding a self-referrer', async () => {
+    const f = fakeDb();
+    const url = new URL('https://example.com/landing?utm_source=partner-42&utm_medium=social');
+    await ingest(
+      f.db,
+      site,
+      payload({ u: url.href, r: 'https://app.example.com/inside' }),
+      url,
+      ua,
+      geo,
+      now,
+    );
+
+    const session = f.batches[0][1].args;
+    expect(session.slice(8, 14)).toEqual([null, null, 'partner-42', 'Organic Social', 'partner-42', 'social']);
+  });
+
   it('drops an event when an existing session belongs to another visitor', async () => {
     const f = fakeDb({ first: () => ({ visitor_id: 'different-visitor' }) });
     await ingest(f.db, site, payload(), new URL('https://example.com/landing'), ua, geo, now);

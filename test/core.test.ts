@@ -49,10 +49,23 @@ describe('classify', () => {
       channel: 'Organic Social',
     });
   });
-  it('currently lets a known referrer override an unknown explicit source tag', () => {
-    expect(classify({ referrerDomain: 'google.com', utmSource: 'partner-42' })).toMatchObject({
-      source: 'Google',
-      channel: 'Organic Search',
+  it.each([
+    ['utm_source', { utmSource: 'partner-42' }, 'partner-42'],
+    ['ref', { ref: 'launch-tweet-42' }, 'launch-tweet-42'],
+  ] as const)('keeps an unknown explicit %s ahead of a known HTTP referrer', (_label, explicit, source) => {
+    expect(classify({ referrerDomain: 'google.com', ...explicit })).toMatchObject({
+      source,
+      channel: 'Referral',
+    });
+  });
+  it.each([
+    ['cpc', 'Paid'],
+    ['newsletter', 'Email'],
+    ['social', 'Organic Social'],
+  ] as const)('keeps %s medium precedence for an explicit custom source', (utmMedium, channel) => {
+    expect(classify({ referrerDomain: 'google.com', utmSource: 'partner-42', utmMedium })).toMatchObject({
+      source: 'partner-42',
+      channel,
     });
   });
   it('keeps a generic external referrer as its source', () => {

@@ -8,10 +8,9 @@ Read `ANALYTICS_SEMANTICS.md` first for the exact definitions and one-visitor li
 
 Vysta's basic first-party visitor continuity, normal 30-minute browser session rotation, domain validation, common source classification, page/goal storage, and bot denylist are understandable and now substantially better characterized by deterministic tests.
 
-The full analytics product is not yet trustworthy enough for every precise internal channel/conversion decision. Reporting-period pageview and timezone defects are now corrected and protected by real SQLite/D1-compatible fixtures. The remaining high-impact issues are:
+The full analytics product is not yet trustworthy enough for every precise internal channel/conversion decision. Reporting-period pageview, timezone, and explicit-source attribution defects are now corrected and protected by deterministic tests. The remaining high-impact issue is:
 
 1. browser events have no idempotency key, so replays, duplicate script instances, and duplicate listeners count again;
-2. explicit unknown UTM/ref tags can be replaced by a known HTTP referrer in the derived Source.
 
 Engaged time should be treated as a visible-tab estimate, not human attention, and it currently double-counts simultaneous visible tabs. Goal/conversion numbers require care because client goals are intentionally interaction signals and the server endpoint is not idempotent. Reporting clocks are now explicit and consistent with each metric's documented basis.
 
@@ -208,6 +207,8 @@ These are defects against Vysta's own comments, UI promises, or internally consi
 
 ### P0-5: an explicit unknown UTM/ref tag can lose to the HTTP referrer
 
+**RESOLVED:** Explicit `utm_source`/`ref` values are now canonicalized when known and otherwise preserved verbatim. HTTP referrer classification is consulted only when no explicit source tag exists; medium-based channel precedence and self-referral filtering are unchanged.
+
 **EXPECTED:** The classifier comment says explicit `utm_source`/`ref` wins over referrer.
 
 **ACTUAL:** Known-source lookup tries the explicit tag and then the referrer. If the tag is unknown but the referrer is known, the known referrer becomes Source. Example: `utm_source=partner-42` plus a Google referrer reports Google, while raw UTM remains `partner-42`.
@@ -344,11 +345,11 @@ No migration was created in this phase.
 The implemented precedence is:
 
 1. choose tag value: `utm_source`, otherwise `ref`/`via`;
-2. find a known source using that tag, otherwise the referrer domain;
-3. choose Source: known canonical name, otherwise raw tag, otherwise raw referrer, otherwise `Direct/None`;
+2. when a tag exists, canonicalize it if known and otherwise keep it raw; consult the referrer only when no tag exists;
+3. without a tag, choose Source from the known canonical referrer, otherwise raw referrer, otherwise `Direct/None`;
 4. choose Channel: paid medium, email medium, known source channel, social medium, generic Referral, otherwise Direct.
 
-This is not exactly "ref, UTM, referrer, Direct": UTM source beats ref, and a known referrer beats an unknown explicit tag in the derived Source. Fixture coverage now includes Google, Bing, DuckDuckGo, Yahoo, Facebook, Instagram, LinkedIn, X/Twitter, Reddit, YouTube, TikTok, ChatGPT, Perplexity, Claude, Gemini, Direct, and generic referral, including common mobile/link-shim subdomains.
+UTM source beats `ref`, and either explicit tag beats the HTTP referrer. Fixture coverage includes Google, Bing, DuckDuckGo, Yahoo, Facebook, Instagram, LinkedIn, X/Twitter, Reddit, YouTube, TikTok, ChatGPT, Perplexity, Claude, Gemini, Direct, and generic referral, including common mobile/link-shim subdomains, plus explicit custom-source and medium-precedence cases.
 
 Self-referrals are correctly removed during new-session ingestion using an exact host-or-dot-subdomain test. Payment last-non-direct credit is separate and deliberate: direct traffic remains Direct, while revenue may be credited to an earlier non-Direct session.
 
@@ -482,7 +483,7 @@ Rejected requests create an abuse-accounting problem: writing one D1 row per rej
 2. **Complete:** fix zoned-day calculation and per-row bucketing with spring/fall/non-DST fixtures.
 3. Approve and ship additive event-ID receipts: schema/Worker first, tracker second, server-goal idempotency third; expose duplicate diagnostics.
 4. Add the tracker singleton guard and test CMS/tag-manager double inclusion.
-5. Correct explicit attribution precedence while preserving raw UTM/ref fields and channel-medium rules; validate against the fixture table.
+5. **Complete:** correct explicit attribution precedence while preserving raw UTM/ref fields and channel-medium rules; validate against the fixture table.
 6. Version/extend server goals for requested session, property compatibility, recency, and idempotency; then correct integration docs.
 
 ### Exact P1 sequence
@@ -497,4 +498,4 @@ Rejected requests create an abuse-accounting problem: writing one D1 row per rej
 
 ## Trust decision
 
-**Current answer: reporting boundaries are ready; the whole product is not yet audit-grade.** Daily/hourly pageview totals, custom date boundaries, local DST buckets, and their previous-period comparisons now have deterministic database-backed coverage. Event idempotency, duplicate tracker inclusion, custom-tag attribution, engaged duration, and the server-goal contract remain unresolved, so those areas should not yet be treated as decision-grade.
+**Current answer: reporting boundaries and custom-tag attribution are ready; the whole product is not yet audit-grade.** Daily/hourly pageview totals, custom date boundaries, local DST buckets, previous-period comparisons, and explicit-source precedence now have deterministic coverage. Event idempotency, duplicate tracker inclusion, engaged duration, and the server-goal contract remain unresolved, so those areas should not yet be treated as decision-grade.

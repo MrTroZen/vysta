@@ -87,7 +87,7 @@ export function classify(input: {
 }): Attribution {
   const { referrerDomain, utmSource, utmMedium, ref } = input;
   const tag = utmSource || ref || null;
-  const known = findKnownSource(tag) ?? findKnownSource(referrerDomain);
+  const known = findKnownSource(tag || referrerDomain);
 
   let source: string;
   if (known) source = known.name;
