@@ -85,7 +85,7 @@ Status legend:
 | `?ref=` | Used only when UTM source absent; stored once | Automated |
 | Direct return after attributed session | New traffic session is Direct; payment credit uses last non-Direct | Smoke; focused SQL fixture is a Gap |
 | Self-referral | Apex/subdomain referrer is discarded | Automated |
-| Unknown tag plus known referrer | Known referrer currently replaces the explicit raw tag | Automated; confirmed bug |
+| Unknown tag plus known referrer | Explicit raw tag wins; HTTP referrer is consulted only when no explicit source exists | Automated |
 | Android app referrer | Package captured as generic referrer domain | Gap |
 
 ### Engagement
@@ -162,7 +162,7 @@ The suite is deterministic: timestamps are fixed, network calls are captured loc
 
 These are defects against Vysta's own comments, UI promises, or internally consistent range/idempotency expectations. Resolution notes distinguish the two boundary defects fixed after the Phase 5 baseline.
 
-### P0-1: overview pageviews and related session counters use the wrong time basis
+### P0.1: overview pageviews and related session counters use the wrong time basis
 
 **RESOLVED:** Overview Visitors/Pageviews and traffic series now query pageview events by `events.ts`. Session count, bounce, and average duration remain session-start cohorts. Goal reports remain goal-event-time based and money remains payment-time based. Session dimensions join in-range pageview events to the stored session snapshot. The site-list 24-hour visitor count also uses pageview event time.
 
@@ -174,27 +174,7 @@ These are defects against Vysta's own comments, UI promises, or internally consi
 
 **FIX:** Deliberately define each KPI's time basis, then query pageviews and pageview series from `events.ts`. Keep Sessions session-start based if desired. Define/finalize bounce and duration ownership explicitly, and align goal/customer denominators. Add a real D1 boundary fixture before changing SQL.
 
-### P0-2: no browser event idempotency
-
-**EXPECTED:** Retrying or replaying one logical event does not change analytics twice.
-
-**ACTUAL:** Payloads have no event ID and `events` has no uniqueness constraint. Repeated pageview/goal/outbound payloads append and increment again; pings add again.
-
-**IMPACT:** Network/application replay, duplicate listeners, malicious replay, and future retry logic inflate metrics.
-
-**FIX:** Implement the event-ID/receipt design below in an additive migration after compatibility review.
-
-### P0-3: duplicate tracker inclusion creates duplicate collection
-
-**EXPECTED:** Installing the same Vysta tracker twice should behave as one tracker or clearly refuse the second initialization.
-
-**ACTUAL:** Each instance sends an initial view, wraps History again, and installs click/engagement listeners. Characterization records doubled initial/SPA pageviews and click goals.
-
-**IMPACT:** CMS/tag-manager duplication can approximately double core metrics.
-
-**FIX:** Add a versioned singleton guard before any side effects. A later compatible instance should reuse the public API/queue and not reinstall hooks. Pair this with server idempotency.
-
-### P0-4: site-time midnight is wrong on some DST transition days
+### P0.2: site-time midnight is wrong on some DST transition days
 
 **RESOLVED:** Local dates are converted to zoned midnights using the offset at the resolved instant. Calendar ranges step by local dates, SQL chart buckets use a generated per-timestamp timezone-offset expression across transitions, repeated fall-back hours are combined once, and full-local-day previous comparisons shift by local calendar days.
 
@@ -206,7 +186,27 @@ These are defects against Vysta's own comments, UI promises, or internally consi
 
 **FIX:** Resolve the local calendar date to an actual zoned midnight with iterative offset resolution or a proven timezone routine, then add spring/fall fixtures for multiple zones.
 
-### P0-5: an explicit unknown UTM/ref tag can lose to the HTTP referrer
+### P0.3a: no browser event idempotency
+
+**EXPECTED:** Retrying or replaying one logical event does not change analytics twice.
+
+**ACTUAL:** Payloads have no event ID and `events` has no uniqueness constraint. Repeated pageview/goal/outbound payloads append and increment again; pings add again.
+
+**IMPACT:** Network/application replay, duplicate listeners, malicious replay, and future retry logic inflate metrics.
+
+**FIX:** Implement the event-ID/receipt design below in an additive migration after compatibility review.
+
+### P0.3b: duplicate tracker inclusion creates duplicate collection
+
+**EXPECTED:** Installing the same Vysta tracker twice should behave as one tracker or clearly refuse the second initialization.
+
+**ACTUAL:** Each instance sends an initial view, wraps History again, and installs click/engagement listeners. Characterization records doubled initial/SPA pageviews and click goals.
+
+**IMPACT:** CMS/tag-manager duplication can approximately double core metrics.
+
+**FIX:** Add a versioned singleton guard before any side effects. A later compatible instance should reuse the public API/queue and not reinstall hooks. Pair this with server idempotency.
+
+### P0.4: an explicit unknown UTM/ref tag can lose to the HTTP referrer
 
 **RESOLVED:** Explicit `utm_source`/`ref` values are now canonicalized when known and otherwise preserved verbatim. HTTP referrer classification is consulted only when no explicit source tag exists; medium-based channel precedence and self-referral filtering are unchanged.
 
@@ -218,7 +218,7 @@ These are defects against Vysta's own comments, UI promises, or internally consi
 
 **FIX:** If an explicit tag exists, canonicalize it when known, otherwise use its raw value; consult referrer only when no explicit tag exists. Preserve channel medium precedence.
 
-### P0-6: server-side goal contract is internally inconsistent and not idempotent
+### P0.5: server-side goal contract is internally inconsistent and not idempotent
 
 **RESOLVED:** The endpoint accepts the documented `properties` field while retaining `props`, honors an exact site-scoped `session_id` with visitor ownership validation, bounds exact and fallback session matching to 30 days, and atomically deduplicates a site-scoped body/header idempotency key. Unkeyed legacy requests remain accepted and replayable.
 
@@ -500,4 +500,4 @@ Rejected requests create an abuse-accounting problem: writing one D1 row per rej
 
 ## Trust decision
 
-**Current answer: reporting boundaries, custom-tag attribution, and keyed server confirmations are ready; the whole product is not yet audit-grade.** Daily/hourly pageview totals, custom date boundaries, local DST buckets, previous-period comparisons, explicit-source precedence, and the server-goal contract now have deterministic coverage. Browser event idempotency, duplicate tracker inclusion, and engaged duration remain unresolved on this branch.
+**Current answer: the planned P0 runtime work passes as a complete set in the current workspace and staging, but production release is blocked by incomplete source control.** Reporting boundaries, local DST buckets, previous-period comparisons, duplicate tracker inclusion, site-scoped browser replay, explicit-source precedence, and keyed server confirmations have deterministic coverage with no cross-fix regression found. However, `origin/main` does not contain the completed P0.3 singleton, event-receipt migration, collector gating, or tests. Restore P0.3 to the branch and verify that exact release candidate on staging before production. The whole product is still not audit-grade: engaged duration remains visible-tab time and the P1 gaps above still need product decisions or deeper fixtures.
