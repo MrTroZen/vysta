@@ -1,6 +1,6 @@
 # Vysta analytics semantics
 
-Status: current behavior characterization, 2026-10-27. This document describes the code as it exists; it does not redefine the metrics. The source of truth is `public/js/script.js`, `src/worker/collect.ts`, `src/worker/stats.ts`, `src/shared/sources.ts`, the D1 migrations, and the dashboard code.
+Status: current behavior characterization, 2026-10-28. This document describes the code as it exists; it does not redefine the metrics. The source of truth is `public/js/script.js`, `src/worker/collect.ts`, `src/worker/stats.ts`, `src/shared/sources.ts`, the D1 migrations, and the dashboard code.
 
 ## Scope and invariants
 
@@ -9,7 +9,7 @@ Status: current behavior characterization, 2026-10-27. This document describes t
 - Traffic acquisition is a session snapshot. It is set only when a session row is first inserted.
 - Reporting deliberately uses different clocks by metric: pageview traffic uses `events.ts`, session quality uses `sessions.started_at`, goals use goal `events.ts`, and money uses `payments.ts`.
 - The collector accepts `pageview`, `goal`, `outbound`, `ping`, and `identify`. Only the first three create `events` rows.
-- Current browser events have no event ID or idempotency key. Replaying a valid payload repeats its effects.
+- Current browser sends include a unique `eid` and tracker version `tv`. Receipts deduplicate each `eid` within its site; legacy payloads without `eid` remain accepted and unprotected.
 - "Current tests" below means the deterministic Vitest suite after the Phase 5 characterization additions. `scripts/smoke.mjs` is a separate local end-to-end suite.
 
 ## Metric definitions
@@ -58,7 +58,7 @@ Status: current behavior characterization, 2026-10-27. This document describes t
 
 **SQL/reporting behavior.** Sessions is `COUNT(*)` over session rows whose `started_at` is in the report range. The dashboard API returns this field, although the current overview card does not display it.
 
-**Known edge cases.** The server does not independently enforce a 30-minute gap. A valid old SID replay continues to update its original row. A goal/outbound arriving before the initial pageview can create a zero-pageview session and capture Direct attribution. Tabs share the session cookie. There is no database constraint connecting event visitor/session identity beyond application checks.
+**Known edge cases.** The server does not independently enforce a 30-minute gap. A legacy payload without `eid` can update an old SID again. A goal/outbound arriving before the initial pageview can create a zero-pageview session and capture Direct attribution. Tabs share the session cookie. There is no database constraint connecting event visitor/session identity beyond application checks.
 
 **Test protection.** Cookie reuse/rotation, first-session insert, session/visitor mismatch, and multiple-tab sharing are automated. Network-order races are not yet covered by a real D1 concurrency test.
 
@@ -76,15 +76,15 @@ Status: current behavior characterization, 2026-10-27. This document describes t
 
 ### 6. Pageview
 
-**Tracker behavior.** One pageview is attempted on tracker initialization. The tracker also wraps `history.pushState` and `history.replaceState`, listens for `popstate`, and supports a forced `minilytics('pageview')`. Its local duplicate key is `pathname + search`. A repeated identical path/query is suppressed; a query change is sent; a hash-only change is not sent. Hard reload creates a new tracker instance and sends again. The public API deliberately clears the duplicate key and can force a repeat.
+**Tracker behavior.** One pageview is attempted on tracker initialization. A versioned window singleton makes duplicate script inclusions reuse the first public API without installing hooks or sending again. The tracker also wraps `history.pushState` and `history.replaceState`, listens for `popstate`, and supports a forced `minilytics('pageview')`. Its local duplicate key is `pathname + search`. A repeated identical path/query is suppressed; a query change is sent; a hash-only change is not sent. Hard reload creates a new tracker instance and sends again. The public API deliberately clears the duplicate key and can force a repeat.
 
-**Ingestion behavior.** An accepted pageview increments `sessions.pageviews`, updates `exit_page` and `last_seen_at`, appends a `pageview` event, and may claim a Dodo payment ID from the URL. Stored event paths are decoded when possible, have one trailing slash removed except `/`, omit all query/hash data, and are clipped to 500 characters.
+**Ingestion behavior.** An accepted pageview increments `sessions.pageviews`, updates `exit_page` and `last_seen_at`, appends a `pageview` event, and may claim a Dodo payment ID from the URL. For payloads with `eid`, all of those mutations are gated by one site-scoped ingestion receipt; replaying the same ID records a duplicate but does not repeat them. Stored event paths are decoded when possible, have one trailing slash removed except `/`, omit all query/hash data, and are clipped to 500 characters.
 
 **SQL/reporting behavior.** Overview Pageviews and the traffic series use `COUNT(*)` over pageview events whose `events.ts` is in the selected range. Each pageview is assigned to the site-local hour/day/week/month containing its own event timestamp. Page breakdowns use the same pageview-event clock.
 
-**Known edge cases.** Duplicate script tags each send and install their own hooks/listeners. Two tabs intentionally create separate pageviews but share session/visitor IDs. Query-only views are distinct at collection but collapse onto the same stored path. Framework router behavior not implemented through History API is not observed. There is no replay deduplication.
+**Known edge cases.** Two tabs intentionally create separate pageviews with separate event IDs but share session/visitor IDs. Query-only views are distinct at collection but collapse onto the same stored path. Framework router behavior not implemented through History API is not observed. Legacy payloads without `eid` remain replayable.
 
-**Test protection.** Initial load, refresh-equivalent new instance, push/replace semantics, popstate, query/hash behavior, forced pageviews, duplicate inclusion, two tabs, path normalization, ingestion, and report formulas are automated. A real Next.js fixture is still missing.
+**Test protection.** Initial load, refresh-equivalent new instance, push/replace semantics, popstate, query/hash behavior, forced pageviews, singleton duplicate inclusion, site-scoped replay/concurrency, legacy compatibility, two tabs, path normalization, ingestion, and report formulas are automated. A real Next.js fixture is still missing.
 
 ### 7. Bounce
 
@@ -114,7 +114,7 @@ Status: current behavior characterization, 2026-10-27. This document describes t
 
 **SQL/reporting behavior.** Users sum session durations. Overview averages `sessions.duration` across sessions started in the selected range.
 
-**Known edge cases.** Two visible tabs add time independently to the same session and can exceed human wall-clock attention. Visibility is the only activity signal; a visible but idle page counts. Minimized/occluded behavior depends on the browser's visibility implementation. A malicious sender can submit many maximum pings until the 24-hour cap. A failed transport loses the time; there is no retry queue.
+**Known edge cases.** Two visible tabs add time independently to the same session and can exceed human wall-clock attention. Visibility is the only activity signal; a visible but idle page counts. Minimized/occluded behavior depends on the browser's visibility implementation. A sender can submit many distinct event IDs with maximum pings until the 24-hour cap. A failed transport loses the time; there is no retry queue.
 
 **Test protection.** Visible interval, hide flush, two-tab addition, per-ping cap, visitor binding, total cap SQL, and interval limit are automated. Actual browser minimize/throttling remains manual.
 
@@ -228,7 +228,7 @@ Status: current behavior characterization, 2026-10-27. This document describes t
 
 ### 23. Goal
 
-**Tracker behavior.** A goal is a named client event from `[data-ml-goal]`, `minilytics('goal'|'track', name, props)`, or a pre-existing `minilytics.q` queue. Names are stringified and sliced to 64 characters in the tracker; data-attribute property values are sliced to 255. There is no debounce or duplicate suppression.
+**Tracker behavior.** A goal is a named client event from `[data-ml-goal]`, `minilytics('goal'|'track', name, props)`, or a pre-existing `minilytics.q` queue. Names are stringified and sliced to 64 characters in the tracker; data-attribute property values are sliced to 255. There is no click debounce: separate calls intentionally receive separate event IDs.
 
 **Ingestion behavior.** Browser ingestion trims/clips the name to 64, increments `sessions.goals`, updates `last_seen_at`, and inserts a goal event with current normalized path. Object/array properties are JSON-stringified and then sliced to 1,000 characters; this can store invalid truncated JSON. A goal can create a session.
 
@@ -236,7 +236,7 @@ Status: current behavior characterization, 2026-10-27. This document describes t
 
 **SQL/reporting behavior.** Goal rows show distinct visitors and total completions (the generic `pageviews` field in the breakdown response) by goal `events.ts`, plus revenue from visitors who completed the goal. The UI percentage is `distinct goal visitors / overview visitors`; both visitor populations are event-window populations, although the numerator requires a goal and the denominator requires a pageview.
 
-**Known edge cases.** Rapid/double browser listeners and browser replays count repeatedly. A duplicated tracker doubles click goals. A goal before the first pageview can create Direct attribution. Goal-active visitors and pageview-active visitors can still be different event populations inside a narrow range. Client calls made before load are safe only when the embedding site installed a valid queue stub; the standard script tag alone does not create that stub before execution. Server-goal requests without an idempotency key remain replayable, and server-goal keys do not coalesce a separate browser goal.
+**Known edge cases.** Rapid/double listener calls count separately because they are separate logical sends; replaying the same browser `eid` does not. A goal before the first pageview can create Direct attribution. Goal-active visitors and pageview-active visitors can still be different event populations inside a narrow range. Client calls made before load are safe only when the embedding site installed a valid queue stub; the standard script tag alone does not create that stub before execution. Legacy browser payloads and server-goal requests without an idempotency key remain replayable. Server-goal keys do not coalesce a separate browser goal.
 
 **Test protection.** Declarative/API/queued goals, rapid duplicates, duplicate inclusion, ingestion, malformed empty names, properties, and smoke dashboard/funnel behavior are covered. Server-goal tests cover exact and fallback session selection, ownership, recency, `properties`/`props`, concurrent retry, key conflicts, site scoping, and legacy unprotected requests.
 
@@ -361,6 +361,6 @@ These are current semantics after the reporting boundary correction.
 
 ## Data retained and data not retained
 
-Stored: stable IDs, session acquisition fields, normalized paths, pageview/goal/outbound events, clipped goal properties, approximate geo, UA-derived device fields, engaged duration, identities supplied through `identify`, and payment data.
+Stored: stable IDs, session acquisition fields, normalized paths, pageview/goal/outbound events, nullable browser event IDs, site-scoped ingestion receipts, clipped goal properties, approximate geo, UA-derived device fields, engaged duration, identities supplied through `identify`, and payment data.
 
-Not stored: page titles, DOM content, full general query strings, URL fragments, raw IP addresses in analytics tables, raw user-agent strings, ping events, hash navigation, or a durable event idempotency key.
+Not stored: page titles, DOM content, full general query strings, URL fragments, raw IP addresses in analytics tables, raw user-agent strings, ping events, or hash navigation.

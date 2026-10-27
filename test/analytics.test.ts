@@ -256,6 +256,7 @@ describe('collector validation characterization', () => {
     expect((await call('{', ua)).status).toBe(400);
     expect((await call('x'.repeat(8_193), ua)).status).toBe(413);
     expect((await call(JSON.stringify(payload({ w: 'short' })), ua)).status).toBe(400);
+    expect((await call(JSON.stringify(payload({ eid: 'bad' })), ua)).status).toBe(400);
   });
 
   it('silently drops missing and known-bot user agents', async () => {

@@ -24,7 +24,10 @@
     "deploy:staging": "vite build && wrangler d1 migrations apply vysta-staging --remote --env staging && wrangler deploy --env staging",
     "deploy:production": "vite build && wrangler d1 migrations apply vysta-production --remote --env production && wrangler deploy --env production",
     "seed": "node scripts/seed-demo.mjs && wrangler d1 execute minilytics --local --file .wrangler/seed.sql",
-    "smoke": "node scripts/smoke.mjs"
+    "smoke": "node scripts/smoke.mjs",
+    "smoke:hosted": "node scripts/smoke-hosted.mjs",
+    "verify": "npm run typecheck && npm run test && npm run build",
+    "verify:full": "node scripts/verify-full.mjs"
   },
   "dependencies": {
     "hono": "^4.13.13",

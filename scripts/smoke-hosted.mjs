@@ -3,8 +3,9 @@
 //     --var ADMIN_EMAILS:owner@example.com --var PLAN_PRODUCT_ID:pdt_plan --var PLAN_SPOTS:50 \
 //     --var PLAN_CHECKOUT_URL:https://checkout.dodopayments.com/buy/pdt_plan?quantity=1 --var BILLING_WEBHOOK_SECRET:whsec_dGVzdC1iaWxsaW5nLXNlY3JldA==
 // Users are created directly in the local DB and their session cookies signed with the local SESSION_SECRET.
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import crypto from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 
 const BASE = process.env.BASE ?? 'http://localhost:8788';
 const SESSION_SECRET = process.env.SESSION_SECRET ?? 'any-long-random-string';
@@ -13,7 +14,13 @@ const assert = (cond, msg) => {
   if (!cond) throw new Error('FAIL: ' + msg);
   console.log('ok -', msg);
 };
-const sql = (q) => execSync(`npx wrangler d1 execute minilytics --local --command ${JSON.stringify(q)}`, { stdio: 'ignore' });
+const wrangler = fileURLToPath(new URL('../node_modules/wrangler/bin/wrangler.js', import.meta.url));
+const sql = (q) => {
+  const args = [wrangler, 'd1', 'execute', 'minilytics', '--local'];
+  if (process.env.WRANGLER_PERSIST_TO) args.push('--persist-to', process.env.WRANGLER_PERSIST_TO);
+  args.push('--command', q);
+  execFileSync(process.execPath, args, { stdio: 'ignore' });
+};
 const cookieFor = (userId) => {
   const value = `u:${userId}.${Date.now() + 86_400_000}`;
   const sig = crypto.createHmac('sha256', SESSION_SECRET).update(value).digest('base64').replace(/=+$/, '');

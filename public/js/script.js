@@ -10,9 +10,20 @@
   var allowLocal = script.hasAttribute('data-allow-localhost');
   var cookieDomain = script.getAttribute('data-domain');
   var VID = 'ml_vid', SID = 'ml_sid', YEAR = 31536000, SESSION = 1800;
+  var TRACKER_VERSION = '1', SINGLETON = '__minilyticsTracker';
 
   var queued = (w.minilytics && w.minilytics.q) || [];
   function noop() {}
+  var existingTracker = w[SINGLETON];
+  if (existingTracker) {
+    if (existingTracker.api) {
+      w.minilytics = existingTracker.api;
+      for (var existingQ = 0; existingQ < queued.length; existingQ++) existingTracker.api.apply(null, queued[existingQ]);
+    }
+    return;
+  }
+  var trackerState = { version: TRACKER_VERSION, siteId: siteId, api: null };
+  w[SINGLETON] = trackerState;
 
   // Opt yourself out: visit any page with ?ml_ignore=true (undo with ?ml_ignore=false).
   try {
@@ -26,6 +37,7 @@
   if (!siteId || ignored || nav.webdriver || (local && !allowLocal)) {
     w.minilytics = noop;
     w.minilytics.attribution = function () { return {}; };
+    trackerState.api = w.minilytics;
     return;
   }
 
@@ -82,7 +94,10 @@
   }
   function send(type, extra, beacon) {
     var id = ids();
-    var body = { w: siteId, t: type, u: cleanUrl(loc.href), vid: id.vid, sid: id.sid, sw: w.screen ? screen.width : 0 };
+    var body = {
+      w: siteId, t: type, u: cleanUrl(loc.href), vid: id.vid, sid: id.sid,
+      eid: uuid(), tv: TRACKER_VERSION, sw: w.screen ? screen.width : 0
+    };
     for (var k in extra) if (extra[k] !== undefined) body[k] = extra[k];
     var json = JSON.stringify(body);
     // text/plain keeps this a "simple" request: no CORS preflight, works with sendBeacon.
@@ -209,6 +224,7 @@
   }
   api.attribution = attribution;
   w.minilytics = api;
+  trackerState.api = api;
 
   pageview();
   for (var q = 0; q < queued.length; q++) api.apply(null, queued[q]);

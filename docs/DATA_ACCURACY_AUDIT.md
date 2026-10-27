@@ -1,6 +1,6 @@
 # Vysta data accuracy audit and test plan
 
-Audit date: 2026-10-27. The Phase 5 audit was the baseline; this document now records the completed reporting time-base, DST boundary, attribution, and server-goal corrections.
+Audit date: 2026-10-27. The Phase 5 audit was the baseline; this document now records the completed P0 accuracy corrections.
 
 Read `ANALYTICS_SEMANTICS.md` first for the exact definitions and one-visitor lifecycle.
 
@@ -8,9 +8,7 @@ Read `ANALYTICS_SEMANTICS.md` first for the exact definitions and one-visitor li
 
 Vysta's basic first-party visitor continuity, normal 30-minute browser session rotation, domain validation, common source classification, page/goal storage, and bot denylist are understandable and now substantially better characterized by deterministic tests.
 
-The full analytics product is not yet trustworthy enough for every precise internal channel/conversion decision. Reporting-period pageview, timezone, explicit-source attribution, and server-goal contract defects are now corrected and protected by deterministic tests. The remaining high-impact issue is:
-
-1. browser events have no idempotency key, so replays, duplicate script instances, and duplicate listeners count again;
+The planned P0 accuracy defects are corrected and protected by deterministic tests: reporting time bases, timezone boundaries, duplicate tracker initialization, browser replay, explicit-source attribution, and the server-goal contract.
 
 Engaged time should be treated as a visible-tab estimate, not human attention, and it currently double-counts simultaneous visible tabs. Client goals remain interaction signals; authoritative backend goals require a durable idempotency key. Reporting clocks are explicit and consistent with each metric's documented basis.
 
@@ -46,7 +44,7 @@ Status legend:
 | Midnight boundary | Session remains one session; pageviews/goals use event time while session-quality metrics use session start | Automated with SQLite/D1-compatible A-H boundary fixture |
 | Site timezone boundary | Range resolves each local midnight with the offset in force at that instant | Automated |
 | DST transition boundary | London spring/fall ranges and per-row buckets use the correct offset | Automated with event-total fixtures |
-| Old SID replay | Server accepts and updates old matching session; no server timeout | Gap at endpoint level; confirmed by code |
+| Old SID replay | A new/distinct event ID can update an old matching session; replay of one ID cannot | Receipt behavior automated; server timeout remains absent |
 | Visitor/session mismatch | Event is silently dropped; ping update is visitor-bound | Automated |
 
 ### Pageviews
@@ -60,10 +58,10 @@ Status legend:
 | Browser forward | Same `popstate` behavior | Covered by mechanism; dedicated case is a Gap |
 | Hash change | No pageview because hash is outside the duplicate key | Automated |
 | Query-string change | Sends a pageview, but ingestion stores the same path without query | Automated |
-| Duplicate script inclusion | Two initial views; two SPA views; click goals also double | Automated; confirmed bug |
+| Duplicate script inclusion | Later inclusion reuses the first singleton without sending or installing hooks again | Automated |
 | Two tabs | Each tab's load/navigation counts, sharing visitor/session | Automated |
 | Forced API pageview | Clears local key and counts again even at the same URL | Automated |
-| Identical payload replay | Counts again | Automated; confirmed bug |
+| Identical payload replay | Same `eid` is ignored within the site; a distinct `eid` counts as a distinct logical event | Automated with SQLite migration fixture |
 
 ### Attribution
 
@@ -109,7 +107,7 @@ Status legend:
 | Declarative click goal | Delegated click sends named goal and clipped data attributes | Automated |
 | JavaScript API goal | `goal` or `track` command sends goal | Automated |
 | Event queued before ready | Works only when a valid `minilytics.q` stub already exists | Automated tracker consumption; installation stub is a docs gap |
-| Rapid duplicate click/API | Every call counts | Automated |
+| Rapid duplicate click/API | Every call counts as a distinct logical event; replay of one `eid` does not | Automated |
 | Server-side goal | Exact recent requested session, otherwise latest recent visitor session; keyed retries mutate once | Automated with SQLite migration fixture |
 | Malformed empty goal | Dropped after session ownership lookup | Automated |
 | Oversized browser properties/body | Collector rejects raw bodies over 8 KiB | Smoke/endpoint unit is a Gap |
@@ -142,7 +140,7 @@ Status legend:
 | `sendBeacon` returns true | No fetch is attempted | Automated |
 | Ad blocker | Script or collector request may be blocked; no client diagnostic reaches Vysta | Manual/design |
 | Network offline | Fetch rejection swallowed; no retry | Automated |
-| Browser/network replay | Any delivered replay counts again | Automated ingestion |
+| Browser/network replay | Same `eid` mutates analytics once; legacy payloads without `eid` remain replayable | Automated ingestion with SQLite migration fixture |
 | Partial page unload delivery | Browser-dependent | Manual |
 
 ## Automated characterization added
@@ -151,6 +149,7 @@ The Phase 5 suite added characterization tests. The boundary fix adds real SQLit
 
 - `test/tracker.test.ts`: a dependency-free VM browser harness covering cookie identity, sliding session expiry, subdomains/tabs, SPA navigation, hash/query behavior, goals and pre-load queues, duplicate script inclusion, engaged time, beacon/fetch fallback, no retry, opt-out/webdriver/localhost suppression, and URL scrubbing.
 - `test/analytics.test.ts`: D1 statement/result fakes covering session/visitor/event creation, attribution capture, self-referrals, session mismatch, ping limits, replay behavior, goals, KPI formulas, ordered funnels, realtime windows, and server-side goal selection/fields.
+- `test/idempotency.test.ts`: the real migration schema in SQLite, covering every browser event type, concurrent replay, site scoping, duplicate diagnostics, event IDs, and legacy compatibility.
 - `test/core.test.ts` now has fixture-based major source coverage, explicit precedence cases, privacy-browser/bot separation, generic referrals, and DST-boundary characterization.
 - `test/reporting-time.test.ts`: fixed A-H cross-midnight/range-start/range-end/previous/daily/hourly assertions against the real migration schema.
 - `test/timezone-reporting.test.ts`: Europe/London GMT-to-BST and BST-to-GMT event totals, repeated/missing hour buckets, previous local-day comparison, plus Asia/Dhaka regression coverage.
@@ -186,25 +185,17 @@ These are defects against Vysta's own comments, UI promises, or internally consi
 
 **FIX:** Resolve the local calendar date to an actual zoned midnight with iterative offset resolution or a proven timezone routine, then add spring/fall fixtures for multiple zones.
 
-### P0.3a: no browser event idempotency
+### P0.3: duplicate tracker initialization and browser event replay inflate collection
 
-**EXPECTED:** Retrying or replaying one logical event does not change analytics twice.
+**RESOLVED:** A versioned singleton guard is installed before tracker side effects, and later script inclusions reuse the first public API without sending or installing hooks again. Tracker sends carry one `eid` per logical send plus `tv`; migration `0006_event_idempotency.sql` adds site-scoped ingestion receipts and nullable event IDs. One atomic D1 batch gates all visitor/session/event/payment-claim mutations on the winning receipt token. Legacy payloads without `eid` remain accepted and unprotected.
 
-**ACTUAL:** Payloads have no event ID and `events` has no uniqueness constraint. Repeated pageview/goal/outbound payloads append and increment again; pings add again.
+**EXPECTED:** Installing the tracker twice behaves as one tracker, and retrying or replaying one logical event does not change analytics twice.
 
-**IMPACT:** Network/application replay, duplicate listeners, malicious replay, and future retry logic inflate metrics.
+**ACTUAL:** Duplicate instances each sent an initial view and installed another set of navigation, click, and engagement hooks. Payloads had no event ID, so repeated pageview/goal/outbound payloads appended and incremented again and repeated pings added duration again.
 
-**FIX:** Implement the event-ID/receipt design below in an additive migration after compatibility review.
+**IMPACT:** CMS/tag-manager duplication and network/application replay could inflate core metrics.
 
-### P0.3b: duplicate tracker inclusion creates duplicate collection
-
-**EXPECTED:** Installing the same Vysta tracker twice should behave as one tracker or clearly refuse the second initialization.
-
-**ACTUAL:** Each instance sends an initial view, wraps History again, and installs click/engagement listeners. Characterization records doubled initial/SPA pageviews and click goals.
-
-**IMPACT:** CMS/tag-manager duplication can approximately double core metrics.
-
-**FIX:** Add a versioned singleton guard before any side effects. A later compatible instance should reuse the public API/queue and not reinstall hooks. Pair this with server idempotency.
+**FIX:** Guard initialization before side effects and gate every event mutation through a site-scoped event receipt while preserving legacy payload compatibility.
 
 ### P0.4: an explicit unknown UTM/ref tag can lose to the HTTP referrer
 
@@ -296,20 +287,21 @@ These are defects against Vysta's own comments, UI promises, or internally consi
 
 ## Event deduplication review and design
 
-### Current state
+### Implemented state
 
-- Repeated `sendBeacon` delivery: no deduplication.
-- Browser/network retry: no deduplication; the tracker itself currently does not retry.
-- Duplicate goal listeners: every listener call counts.
-- Duplicate script tags: each instance counts.
-- Identical payload replay: counts again.
+- Repeated delivery of the same `eid`: site-scoped receipt prevents repeated analytics mutations.
+- Beacon-to-fetch fallback reuses the same serialized payload and `eid`.
+- Duplicate goal listener calls remain distinct logical events with distinct IDs.
+- Duplicate script tags reuse the first tracker singleton.
+- Identical payloads with different IDs count separately by design.
+- Legacy payloads without `eid` remain accepted and unprotected.
 - Payments are different: provider/payment primary keys use `INSERT OR IGNORE`, so their core record path has idempotency protection.
 
-### Proposed compatible design
+### Implemented compatible design
 
-1. Add optional `eid` (UUID) and tracker version `tv` to browser payloads. Generate `eid` once per logical event before selecting beacon/fetch. A future retry must reuse it.
-2. Continue accepting legacy payloads without `eid` during a published compatibility window; mark their dedup status as `legacy_unprotected`.
-3. Add a forward-only table, not a rewrite of `events`:
+1. Browser payloads include optional `eid` and tracker version `tv`. The tracker generates `eid` once per logical event before selecting beacon/fetch.
+2. Legacy payloads without `eid` continue to be accepted and remain unprotected.
+3. Forward-only migration `0006_event_idempotency.sql` adds the receipt table and a nullable `events.event_id` with a partial site/event unique index:
 
 ```sql
 CREATE TABLE ingestion_receipts (
@@ -328,15 +320,15 @@ CREATE INDEX ingestion_receipts_site_time
 ```
 
 4. For each request, generate a server processing token. In one atomic D1 batch, `INSERT OR IGNORE` the receipt, and condition every session/visitor/event mutation on the receipt holding that token. A replay's insert is ignored, so its different token cannot mutate analytics. Update duplicate diagnostics separately.
-5. Keep receipt retention at least as long as the maximum retry/replay window chosen by policy. Deleting a receipt reopens that event ID to replay, so permanent minimal receipts or event-table uniqueness may be preferable for pageviews/goals.
-6. Add `event_id` to `events` for diagnostics and a partial unique index for non-null IDs if the receipt/table write strategy is verified with D1 transaction semantics.
+5. Receipts currently have no automatic retention deletion; deleting one would reopen that event ID to replay.
+6. `events.event_id` provides diagnostics and a partial unique index for non-null IDs.
 7. Server-side goals use the separate `server_goal_receipts` design from migration `0007_server_goal_idempotency.sql`; browser event IDs and server business keys remain separate namespaces.
 8. Do not derive identity from payload equality or timestamp/name/path hashes. Two legitimate identical clicks can happen; deduplicate logical sends, not similar content.
 
 ### Compatibility and cost implications
 
 - Old installed trackers remain accepted but remain replayable.
-- New tracker and old Worker deployment ordering matters: deploy the accepting Worker/schema before emitting `eid`.
+- Schema, Worker, and tracker assets must be deployed together with the migration applied before the new Worker serves traffic.
 - A receipt write adds D1 writes/storage per event and must be capacity-tested.
 - Pings and identifies need receipts too; event-table uniqueness alone cannot protect their session/visitor mutations.
 - Deduplication does not replace a singleton tracker guard, goal debounce policy, rate limiting, or bot controls.
@@ -483,8 +475,8 @@ Rejected requests create an abuse-accounting problem: writing one D1 row per rej
 
 1. **Complete:** define/test every KPI time basis and correct pageview totals, series, dimensions, and denominators.
 2. **Complete:** fix zoned-day calculation and per-row bucketing with spring/fall/non-DST fixtures.
-3. Approve and ship additive event-ID receipts: schema/Worker first, tracker second, server-goal idempotency third; expose duplicate diagnostics.
-4. Add the tracker singleton guard and test CMS/tag-manager double inclusion.
+3. **Complete:** add site-scoped event-ID receipts with legacy compatibility and replay/concurrency tests.
+4. **Complete:** add the tracker singleton guard and test CMS/tag-manager double inclusion.
 5. **Complete:** correct explicit attribution precedence while preserving raw UTM/ref fields and channel-medium rules; validate against the fixture table.
 6. **Complete:** extend server goals for requested session, property compatibility, recency, and idempotency; then correct integration docs.
 
@@ -500,4 +492,4 @@ Rejected requests create an abuse-accounting problem: writing one D1 row per rej
 
 ## Trust decision
 
-**Current answer: the planned P0 runtime work passes as a complete set in the current workspace and staging, but production release is blocked by incomplete source control.** Reporting boundaries, local DST buckets, previous-period comparisons, duplicate tracker inclusion, site-scoped browser replay, explicit-source precedence, and keyed server confirmations have deterministic coverage with no cross-fix regression found. However, `origin/main` does not contain the completed P0.3 singleton, event-receipt migration, collector gating, or tests. Restore P0.3 to the branch and verify that exact release candidate on staging before production. The whole product is still not audit-grade: engaged duration remains visible-tab time and the P1 gaps above still need product decisions or deeper fixtures.
+**Current answer: the planned P0 runtime work and source-control reconciliation are complete.** Reporting boundaries, local DST buckets, previous-period comparisons, duplicate tracker inclusion, site-scoped browser replay, explicit-source precedence, and keyed server confirmations have deterministic coverage with no cross-fix regression found. `origin/main` contains the complete P0.1-P0.5 source set. Verify the exact reconciled branch on staging before production. The whole product is still not audit-grade: engaged duration remains visible-tab time and the P1 gaps above still need product decisions or deeper fixtures.

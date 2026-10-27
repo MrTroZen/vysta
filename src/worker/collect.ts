@@ -19,12 +19,63 @@ interface Payload {
   n?: string;
   p?: Record<string, unknown>;
   d?: number;
+  eid?: string;
+  tv?: string;
 }
 
 const clip = (s: unknown, n = 255): string | null =>
   typeof s === 'string' && s.trim() ? s.trim().slice(0, n) : null;
 
 const isId = (s: unknown): s is string => typeof s === 'string' && /^[\w-]{8,64}$/.test(s);
+
+interface EventGate {
+  eventId: string;
+  processingToken: string;
+  trackerVersion: string | null;
+}
+
+const RECEIPT_PREDICATE =
+  'EXISTS (SELECT 1 FROM ingestion_receipts ir WHERE ir.site_id = ? AND ir.event_id = ? AND ir.processing_token = ?)';
+
+function gateFor(body: Payload): EventGate | null {
+  if (!body.eid) return null;
+  return { eventId: body.eid, processingToken: crypto.randomUUID(), trackerVersion: clip(body.tv, 32) };
+}
+
+function gateArgs(siteId: string, gate: EventGate): unknown[] {
+  return [siteId, gate.eventId, gate.processingToken];
+}
+
+function startReceipt(db: D1Database, siteId: string, type: string, gate: EventGate, now: number) {
+  return db
+    .prepare(
+      `INSERT OR IGNORE INTO ingestion_receipts
+       (site_id, event_id, event_type, processing_token, first_received_at, last_received_at, tracker_version)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .bind(siteId, gate.eventId, type, gate.processingToken, now, now, gate.trackerVersion);
+}
+
+function finishReceipt(db: D1Database, siteId: string, gate: EventGate, now: number) {
+  return db
+    .prepare(
+      `UPDATE ingestion_receipts
+       SET last_received_at = ?, duplicate_count = duplicate_count + CASE WHEN processing_token = ? THEN 0 ELSE 1 END
+       WHERE site_id = ? AND event_id = ?`,
+    )
+    .bind(now, gate.processingToken, siteId, gate.eventId);
+}
+
+function gatedUpdate(
+  db: D1Database,
+  sql: string,
+  params: unknown[],
+  siteId: string,
+  gate: EventGate | null,
+) {
+  if (!gate) return db.prepare(sql).bind(...params);
+  return db.prepare(`${sql} AND ${RECEIPT_PREDICATE}`).bind(...params, ...gateArgs(siteId, gate));
+}
 
 export function normalizePath(pathname: string): string {
   let p = pathname || '/';
@@ -55,7 +106,15 @@ export async function handleEvent(c: Context<AppEnv>) {
   } catch {
     return c.body(null, 400);
   }
-  if (!body || !isId(body.w) || !TYPES.has(body.t) || !isId(body.vid) || !isId(body.sid)) return c.body(null, 400);
+  if (
+    !body ||
+    !isId(body.w) ||
+    !TYPES.has(body.t) ||
+    !isId(body.vid) ||
+    !isId(body.sid) ||
+    (body.eid !== undefined && !isId(body.eid))
+  )
+    return c.body(null, 400);
 
   const ua = c.req.header('user-agent') ?? '';
   if (isBot(ua)) return c.body(null, 202);
@@ -135,9 +194,24 @@ export async function ingest(
 ) {
   const path = normalizePath(url.pathname);
   const { t, vid, sid } = body;
+  const gate = gateFor(body);
 
   if (t === 'ping') {
     const ms = Math.max(0, Math.min(MAX_PING_MS, Math.round(Number(body.d) || 0)));
+    if (gate) {
+      await db.batch([
+        startReceipt(db, site.id, t, gate, now),
+        gatedUpdate(
+          db,
+          'UPDATE sessions SET duration = MIN(duration + ?, 86400000), last_seen_at = ? WHERE site_id = ? AND id = ? AND visitor_id = ?',
+          [ms, now, site.id, sid, vid],
+          site.id,
+          gate,
+        ),
+        finishReceipt(db, site.id, gate, now),
+      ]);
+      return;
+    }
     await db
       .prepare('UPDATE sessions SET duration = MIN(duration + ?, 86400000), last_seen_at = ? WHERE site_id = ? AND id = ? AND visitor_id = ?')
       .bind(ms, now, site.id, sid, vid)
@@ -147,14 +221,22 @@ export async function ingest(
 
   if (t === 'identify') {
     const p = body.p ?? {};
-    await db.batch([
-      db.prepare('INSERT OR IGNORE INTO visitors (site_id, id, first_seen) VALUES (?, ?, ?)').bind(site.id, vid, now),
-      db
-        .prepare(
-          'UPDATE visitors SET user_id = COALESCE(?, user_id), email = COALESCE(?, email), name = COALESCE(?, name) WHERE site_id = ? AND id = ?',
-        )
-        .bind(clip(p.user_id, 128), clip(p.email, 200)?.toLowerCase() ?? null, clip(p.name, 128), site.id, vid),
-    ]);
+    const insert = gate
+      ? db
+          .prepare(
+            `INSERT OR IGNORE INTO visitors (site_id, id, first_seen)
+             SELECT ?, ?, ? WHERE ${RECEIPT_PREDICATE}`,
+          )
+          .bind(site.id, vid, now, ...gateArgs(site.id, gate))
+      : db.prepare('INSERT OR IGNORE INTO visitors (site_id, id, first_seen) VALUES (?, ?, ?)').bind(site.id, vid, now);
+    const update = gatedUpdate(
+      db,
+      'UPDATE visitors SET user_id = COALESCE(?, user_id), email = COALESCE(?, email), name = COALESCE(?, name) WHERE site_id = ? AND id = ?',
+      [clip(p.user_id, 128), clip(p.email, 200)?.toLowerCase() ?? null, clip(p.name, 128), site.id, vid],
+      site.id,
+      gate,
+    );
+    await db.batch(gate ? [startReceipt(db, site.id, t, gate, now), insert, update, finishReceipt(db, site.id, gate, now)] : [insert, update]);
     return;
   }
 
@@ -168,37 +250,54 @@ export async function ingest(
     return;
   }
 
-  const stmts: D1PreparedStatement[] = [];
+  const stmts: D1PreparedStatement[] = gate ? [startReceipt(db, site.id, t, gate, now)] : [];
   if (!existing) {
-    stmts.push(...newSession(db, site, body, url, path, ua, geo, now));
+    stmts.push(...newSession(db, site, body, url, path, ua, geo, now, gate));
   }
 
   if (t === 'pageview') {
     if (existing) {
       stmts.push(
-        db
-          .prepare('UPDATE sessions SET pageviews = pageviews + 1, exit_page = ?, last_seen_at = ? WHERE site_id = ? AND id = ?')
-          .bind(path, now, site.id, sid),
+        gatedUpdate(
+          db,
+          'UPDATE sessions SET pageviews = pageviews + 1, exit_page = ?, last_seen_at = ? WHERE site_id = ? AND id = ?',
+          [path, now, site.id, sid],
+          site.id,
+          gate,
+        ),
       );
     }
-    stmts.push(insertEvent(db, site.id, sid, vid, now, 'pageview', null, path, null));
-    stmts.push(...claimPayment(db, site.id, vid, url, now));
+    stmts.push(insertEvent(db, site.id, sid, vid, now, 'pageview', null, path, null, gate));
+    stmts.push(...claimPayment(db, site.id, vid, url, now, gate));
   } else if (t === 'goal') {
     const name = clip(body.n, 64);
     if (!name) return;
     const props = body.p && typeof body.p === 'object' ? JSON.stringify(body.p).slice(0, 1000) : null;
     stmts.push(
-      db.prepare('UPDATE sessions SET goals = goals + 1, last_seen_at = ? WHERE site_id = ? AND id = ?').bind(now, site.id, sid),
-      insertEvent(db, site.id, sid, vid, now, 'goal', name, path, props),
+      gatedUpdate(
+        db,
+        'UPDATE sessions SET goals = goals + 1, last_seen_at = ? WHERE site_id = ? AND id = ?',
+        [now, site.id, sid],
+        site.id,
+        gate,
+      ),
+      insertEvent(db, site.id, sid, vid, now, 'goal', name, path, props, gate),
     );
   } else if (t === 'outbound') {
     const target = clip(body.n, 500);
     if (!target) return;
     stmts.push(
-      db.prepare('UPDATE sessions SET last_seen_at = ? WHERE site_id = ? AND id = ?').bind(now, site.id, sid),
-      insertEvent(db, site.id, sid, vid, now, 'outbound', target, path, null),
+      gatedUpdate(
+        db,
+        'UPDATE sessions SET last_seen_at = ? WHERE site_id = ? AND id = ?',
+        [now, site.id, sid],
+        site.id,
+        gate,
+      ),
+      insertEvent(db, site.id, sid, vid, now, 'outbound', target, path, null, gate),
     );
   }
+  if (gate) stmts.push(finishReceipt(db, site.id, gate, now));
   await db.batch(stmts);
 }
 
@@ -206,28 +305,47 @@ export async function ingest(
  * Dodo sends buyers back to your return URL with ?payment_id=pay_... . Seeing that on a pageview tells us
  * exactly which visitor made the payment, even when the checkout had no metadata.
  */
-function claimPayment(db: D1Database, siteId: string, vid: string, url: URL, now: number): D1PreparedStatement[] {
+function claimPayment(
+  db: D1Database,
+  siteId: string,
+  vid: string,
+  url: URL,
+  now: number,
+  gate: EventGate | null,
+): D1PreparedStatement[] {
   const paymentId = url.searchParams.get('payment_id') ?? url.searchParams.get('subscription_id');
   if (!paymentId || !/^(pay|sub)_[\w-]{4,64}$/.test(paymentId)) return [];
+  const claim = gate
+    ? db
+        .prepare(
+          `INSERT OR IGNORE INTO payment_claims (site_id, payment_id, visitor_id, ts)
+           SELECT ?, ?, ?, ? WHERE ${RECEIPT_PREDICATE}`,
+        )
+        .bind(siteId, paymentId, vid, now, ...gateArgs(siteId, gate))
+    : db
+        .prepare('INSERT OR IGNORE INTO payment_claims (site_id, payment_id, visitor_id, ts) VALUES (?, ?, ?, ?)')
+        .bind(siteId, paymentId, vid, now);
   return [
-    db
-      .prepare('INSERT OR IGNORE INTO payment_claims (site_id, payment_id, visitor_id, ts) VALUES (?, ?, ?, ?)')
-      .bind(siteId, paymentId, vid, now),
+    claim,
     // The webhook usually arrives first; link that payment now if nothing else already did.
-    db
-      .prepare(
-        `UPDATE payments SET visitor_id = ?, matched_by = 'return_page',
+    gatedUpdate(
+      db,
+      `UPDATE payments SET visitor_id = ?, matched_by = 'return_page',
            session_id = (${creditedSessionSql()})
          WHERE site_id = ? AND (id = ? OR subscription_id = ?) AND visitor_id IS NULL`,
-      )
-      .bind(vid, siteId, vid, now + 60_000, siteId, paymentId, paymentId),
-    db
-      .prepare(
-        `UPDATE visitors SET email = COALESCE(email, (SELECT email FROM payments WHERE site_id = ? AND (id = ? OR subscription_id = ?) LIMIT 1)),
+      [vid, siteId, vid, now + 60_000, siteId, paymentId, paymentId],
+      siteId,
+      gate,
+    ),
+    gatedUpdate(
+      db,
+      `UPDATE visitors SET email = COALESCE(email, (SELECT email FROM payments WHERE site_id = ? AND (id = ? OR subscription_id = ?) LIMIT 1)),
            name = COALESCE(name, (SELECT name FROM payments WHERE site_id = ? AND (id = ? OR subscription_id = ?) LIMIT 1))
          WHERE site_id = ? AND id = ?`,
-      )
-      .bind(siteId, paymentId, paymentId, siteId, paymentId, paymentId, siteId, vid),
+      [siteId, paymentId, paymentId, siteId, paymentId, paymentId, siteId, vid],
+      siteId,
+      gate,
+    ),
   ];
 }
 
@@ -241,7 +359,16 @@ function insertEvent(
   name: string | null,
   path: string,
   props: string | null,
+  gate: EventGate | null,
 ) {
+  if (gate) {
+    return db
+      .prepare(
+        `INSERT INTO events (site_id, session_id, visitor_id, ts, type, name, path, props, event_id)
+         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE ${RECEIPT_PREDICATE}`,
+      )
+      .bind(siteId, sid, vid, ts, type, name, path, props, gate.eventId, ...gateArgs(siteId, gate));
+  }
   return db
     .prepare('INSERT INTO events (site_id, session_id, visitor_id, ts, type, name, path, props) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
     .bind(siteId, sid, vid, ts, type, name, path, props);
@@ -256,6 +383,7 @@ function newSession(
   ua: string,
   geo: Geo,
   now: number,
+  gate: EventGate | null,
 ): D1PreparedStatement[] {
   let referrer: string | null = null;
   let referrerDomain: string | null = null;
@@ -286,46 +414,70 @@ function newSession(
   const { browser, os, device } = parseUA(ua, Number(body.sw) || undefined);
   const pageviews = body.t === 'pageview' ? 1 : 0;
 
-  return [
-    db.prepare('INSERT OR IGNORE INTO visitors (site_id, id, first_seen) VALUES (?, ?, ?)').bind(site.id, body.vid, now),
-    db
-      .prepare(
-        `INSERT OR IGNORE INTO sessions (site_id, id, visitor_id, started_at, last_seen_at, pageviews, hostname, entry_page, exit_page,
+  const visitor = gate
+    ? db
+        .prepare(
+          `INSERT OR IGNORE INTO visitors (site_id, id, first_seen)
+           SELECT ?, ?, ? WHERE ${RECEIPT_PREDICATE}`,
+        )
+        .bind(site.id, body.vid, now, ...gateArgs(site.id, gate))
+    : db.prepare('INSERT OR IGNORE INTO visitors (site_id, id, first_seen) VALUES (?, ?, ?)').bind(site.id, body.vid, now);
+  const sessionSql = gate
+    ? `INSERT OR IGNORE INTO sessions (site_id, id, visitor_id, started_at, last_seen_at, pageviews, hostname, entry_page, exit_page,
           referrer, referrer_domain, source, channel, utm_source, utm_medium, utm_campaign, utm_term, utm_content, ref,
           country, region, city, browser, os, device, lat, lon)
-         VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .bind(
-        site.id,
-        body.sid,
-        body.vid,
-        now,
-        now,
-        stripWww(url.hostname),
-        path,
-        path,
-        referrer,
-        referrerDomain,
-        source,
-        channel,
-        utm.source,
-        utm.medium,
-        utm.campaign,
-        utm.term,
-        utm.content,
-        ref,
-        geo.country,
-        geo.region,
-        geo.city,
-        browser,
-        os,
-        device,
-        geo.lat,
-        geo.lon,
-      ),
+       SELECT ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+       WHERE ${RECEIPT_PREDICATE}`
+    : `INSERT OR IGNORE INTO sessions (site_id, id, visitor_id, started_at, last_seen_at, pageviews, hostname, entry_page, exit_page,
+          referrer, referrer_domain, source, channel, utm_source, utm_medium, utm_campaign, utm_term, utm_content, ref,
+          country, region, city, browser, os, device, lat, lon)
+       VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+  const sessionArgs = [
+    site.id,
+    body.sid,
+    body.vid,
+    now,
+    now,
+    stripWww(url.hostname),
+    path,
+    path,
+    referrer,
+    referrerDomain,
+    source,
+    channel,
+    utm.source,
+    utm.medium,
+    utm.campaign,
+    utm.term,
+    utm.content,
+    ref,
+    geo.country,
+    geo.region,
+    geo.city,
+    browser,
+    os,
+    device,
+    geo.lat,
+    geo.lon,
+  ];
+  const session = db
+    .prepare(sessionSql)
+    .bind(...sessionArgs, ...(gate ? gateArgs(site.id, gate) : []));
+
+  return [
+    visitor,
+    session,
     // Separate statement so concurrent first events (pageview + goal racing) never double count.
     ...(pageviews
-      ? [db.prepare('UPDATE sessions SET pageviews = pageviews + 1 WHERE site_id = ? AND id = ?').bind(site.id, body.sid)]
+      ? [
+          gatedUpdate(
+            db,
+            'UPDATE sessions SET pageviews = pageviews + 1 WHERE site_id = ? AND id = ?',
+            [site.id, body.sid],
+            site.id,
+            gate,
+          ),
+        ]
       : []),
   ];
 }

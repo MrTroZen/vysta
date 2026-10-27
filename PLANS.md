@@ -18,11 +18,11 @@ Make Vysta analytics trustworthy enough for internal business decisions.
 
 ## Active task
 
-### Production release gate
+### Production release preparation
 
-- Restore the completed P0.3 tracker singleton and browser event-idempotency changes to `origin/main`.
-- Verify the exact branch release candidate on staging before any production deployment.
-- Keep production unchanged until the branch contains the complete reviewed P0 set.
+- P0.1-P0.5 now form one complete source-controlled release candidate.
+- This reconciliation does not deploy staging or production.
+- Verify the exact reconciled branch on staging before any production deployment.
 
 ## Next
 

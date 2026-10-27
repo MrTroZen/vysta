@@ -22,13 +22,13 @@ The first real tracked site is Qavyo Pricing.
 ## Accuracy
 
 - P0.1 reporting-time and P0.2 DST corrections are committed and verified on staging.
-- P0.3 duplicate initialization and site-scoped browser event idempotency are complete in the current workspace and verified on staging, but are not present on `origin/main`.
+- P0.3 duplicate initialization and site-scoped browser event idempotency are committed and verified on staging.
 - P0.4 explicit UTM/ref precedence over HTTP referrers is complete and verified on staging.
 - P0.5 server-goal session, property, recency, and idempotency contract is complete and verified on staging.
 - Staging Worker version: `32295438-2e81-4b24-8bc0-e999a0575332`.
 - P0.1-P0.5 are not deployed to production.
 - The final P0 review found no runtime regression or contradiction between the five fixes; all 100 targeted assertions pass together.
-- Production release is blocked because `origin/main` does not contain P0.3's tracker singleton, migration `0006_event_idempotency.sql`, collector receipt gating, or associated tests.
+- `origin/main` now contains the complete P0.1-P0.5 source set; the exact reconciled branch still requires staging verification before production.
 - Reporting boundaries, browser event delivery, custom-source attribution, and keyed server confirmations are protected; P1 findings remain.
 
 ## Git
@@ -38,6 +38,6 @@ The first real tracked site is Qavyo Pricing.
 - `796a6dc` - fix: correct analytics reporting time boundaries
 - `5196930` - test: establish analytics accuracy characterization baseline
 
-The completed P0.3 commit `a7cd5cd76fa48d40468caa8e7442b464fa656a4d` is not reachable from `origin/main`; do not build a production release from the branch until those changes are restored and the resulting release candidate is reverified on staging.
+The original P0.3 commit `a7cd5cd76fa48d40468caa8e7442b464fa656a4d` was reconciled onto the current mainline without its unrelated temporary-clone harness parent.
 
 Production changes still require explicit instruction and staging verification.

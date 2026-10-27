@@ -222,6 +222,8 @@ describe('browser tracker characterization', () => {
     expect(tracker.requests).toHaveLength(1);
     expect(tracker.requests[0]).toMatchObject({
       t: 'pageview',
+      tv: '1',
+      eid: '00000000-0000-4000-8000-000000000003',
       u: 'https://example.com/welcome',
       r: 'https://www.google.com/search?q=vysta',
       vid: '00000000-0000-4000-8000-000000000001',
@@ -296,14 +298,25 @@ describe('browser tracker characterization', () => {
     ]);
   });
 
-  it('double-counts initial pageviews, SPA navigation, and click goals when the script is included twice', () => {
+  it('initializes once when the tracker script is included twice', () => {
     const tracker = new TrackerHarness();
     tracker.load();
     tracker.load();
     tracker.push('/next');
     tracker.clickGoal('signup');
-    expect(tracker.requests.filter((request) => request.t === 'pageview')).toHaveLength(4);
-    expect(tracker.requests.filter((request) => request.t === 'goal')).toHaveLength(2);
+    expect(tracker.requests.filter((request) => request.t === 'pageview')).toHaveLength(2);
+    expect(tracker.requests.filter((request) => request.t === 'goal')).toHaveLength(1);
+    expect(tracker.intervals).toHaveLength(1);
+  });
+
+  it('gives every logical send a unique event id and includes the tracker version', () => {
+    const tracker = new TrackerHarness();
+    tracker.load();
+    tracker.call('goal', 'signup');
+    tracker.call('goal', 'signup');
+    const eventIds = tracker.requests.map((request) => request.eid);
+    expect(new Set(eventIds).size).toBe(3);
+    expect(tracker.requests.every((request) => request.tv === '1')).toBe(true);
   });
 
   it('sends visible engaged time in pings and counts two visible tabs independently', () => {
@@ -352,6 +365,7 @@ describe('browser tracker characterization', () => {
     declined.call('goal', 'signup');
     expect(declined.beacons).toHaveLength(1);
     expect(declined.requests.at(-1)).toMatchObject({ t: 'goal', n: 'signup' });
+    expect(JSON.parse(await declined.beacons[0].text()).eid).toBe(declined.requests.at(-1)?.eid);
   });
 
   it('does not retry a failed fetch', async () => {
