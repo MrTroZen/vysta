@@ -30,17 +30,18 @@ Current snapshot as of 2026-10-28.
 
 - The live Vysta-connected source is the separate Next.js repository at `E:\Qavyo\Pricing`, whose GitHub `main` is `0796e27` (`feat: add Vysta analytics`, 2026-10-27).
 - That committed root layout loads `https://vysta-production.vysta.workers.dev/js/script.js` with public site ID `4g360v0d0i6n153r` across the `/` and `/pricing` routes.
+- GitHub's Vercel status for `0796e27` is successful. Both public routes return `200` without redirect at `qavyo-pricing.vercel.app`; delivered HTML contains the production Vysta preload and serialized direct loader, with no consent key or consent UI. The live tracker is therefore the committed always-on variant.
 - The only explicit Vysta goal in committed or local Qavyo Pricing source is `view_pricing`, attached to the hero's See Pricing link. No identify call, server-side goal, `start_free_intent`, or `talk_to_sales_intent` is configured.
-- Standard tracker measurement available for consented/loaded visits includes page views and SPA route changes, acquisition/referrer/campaign fields, device data, outbound clicks, engagement pings, and `view_pricing`.
-- The local Qavyo Pricing worktree is dirty: it replaces the committed always-on loader with an uncommitted consent-gated component and has untracked analytics support files and `docs/TRACKING.md`. A local Next.js build from 2026-10-27 contains that consent-gated version, but there is no `.vercel` metadata or deployment workflow proving which variant is live.
-- The untracked tracking document records timezone `Europe/London`, currency `GBP`, and host `qavyo-pricing.vercel.app`; these values were not verified against Vysta production.
+- Standard tracker measurement available for loaded visits includes page views and SPA route changes, acquisition/referrer/campaign fields, device data, outbound clicks, engagement pings, and `view_pricing`.
+- The local Qavyo Pricing worktree is dirty: it replaces the always-on loader with an uncommitted consent-gated component and has untracked analytics support files and `docs/TRACKING.md`. Its local Next.js build contains that experiment, but it is not the production revision and was not committed or deployed by this validation work.
+- `qavyo-pricing.vercel.app` is the verified current production and validation property. The untracked tracking document records timezone `Europe/London` and currency `GBP`; those Vysta settings remain unverified because no production configuration query was authorized.
 - `Qavyo-website` at `84a4039` is a separate static redesign repository. Its 120-route inventory and lack of Vysta code were correctly observed, but it was incorrectly treated as the source of the already-live pricing property.
 - Vysta's accuracy audit was correct that Qavyo already had `view_pricing`; the prior status statement calling that goal unsupported was wrong.
-- No GA4/GTM or Search Console verification is visible in the inspected Qavyo Pricing or static redesign source. Qavyo Pricing also has no committed robots/sitemap route or canonical production-domain metadata.
+- No GA4/GTM or Search Console verification is visible in the inspected Qavyo Pricing or static redesign source. Qavyo Pricing has no committed robots/sitemap route or canonical metadata, so the Vercel URL is operationally verified but not declared as a final SEO canonical.
 
 ## Git state
 
-- GitHub `main` was safely fast-forwarded from `0b18a0e` through the four reviewed Tracking Health commits and now points to `f62dd55`.
+- GitHub `main` contains the four reviewed Tracking Health commits through `f62dd55` and the corrected Qavyo repository baseline in `660ad2b`.
 - The original Vysta worktree remains on `ff17b5a` because its `.git` ACL is read-only; documentation reconciliation continues through the isolated writable clone.
 - The validation-sprint roadmap and this status snapshot are committed separately from the implementation.
 
