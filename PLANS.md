@@ -11,19 +11,19 @@ Build Vysta into a trustworthy, privacy-focused analytics platform that gives sm
 
 ## Current phase
 
-Lead & Action Tracking v1 — implemented and verified locally on top of Performance v1
+What Changed Insights v1 — deterministic implementation completed and verified locally on top of Performance v1
 
 ## Objective and boundaries
 
-Make common high-intent website actions visible without per-site JavaScript, while preserving configured goals and the existing analytics model.
+Surface a small number of meaningful current-versus-previous-period changes without requiring owners to interpret analytics tables.
 
-- Detect generic phone, WhatsApp, email, and native form intent in the existing tracker and goal pipeline.
-- Never collect contact destinations, form contents, field values, or raw URLs for automatic actions.
-- Report distinct people, action counts, and originating pages in owner-friendly language.
-- Keep explicit browser and server-side goals backward compatible.
-- Do not add CRM attribution, call tracking, revenue attribution, funnels, GA4, AI insights, customer-specific behavior, or deployment work.
+- Use deterministic, separately tested rules over existing Performance totals and breakdowns.
+- Require both meaningful absolute volume and percentage movement; suppress tiny samples and zero-to-small noise.
+- Rank traffic, action/intent, source, page, and action-page observations and show at most four.
+- Keep intent signals distinct from confirmed outcomes and provide a neutral no-change state.
+- Do not add AI/LLMs, scheduled reports, exports, GA4, customer-specific rules, deferred reliability work, Google configuration, or deployment work.
 
-## Proposed architecture
+## Search Console v1 reference architecture
 
 ### Separation from dashboard login
 

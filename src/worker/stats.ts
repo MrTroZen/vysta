@@ -74,10 +74,17 @@ interface Ctx {
   filters: Filters;
 }
 
+export function reportRange(current: Range, timezone: string, comparison?: string): Range {
+  return comparison === 'previous'
+    ? { ...current, from: previousPeriodStart(current, timezone), to: current.from }
+    : current;
+}
+
 export function makeCtx(c: Context<AppEnv>): Ctx {
   const site = c.get('site');
   const q = c.req.query();
-  const range = resolveRange(q, site.timezone, site.created_at);
+  const currentRange = resolveRange(q, site.timezone, site.created_at);
+  const range = reportRange(currentRange, site.timezone, q.compare);
   return { db: c.env.DB, site, range, filters: parseFilters(q.filters) };
 }
 

@@ -11,6 +11,7 @@ Current snapshot as of 2026-10-28.
 
 ## Verification
 
+- What Changed Insights v1 passed `npm run verify`: 143 tests across 13 test files, typecheck, and the production dashboard build. Focused insight/reporting verification covered 29 tests across four files without Google credentials or external calls. Rendered browser QA remains pending because this worktree has no Playwright setup and the Browser plugin was unavailable.
 - The reconciled Performance v1 and Lead & Action Tracking v1 branch passed `npm run verify`: 130 tests across 12 test files, typecheck, and the production dashboard build. Tracker, ingestion, server-goal, reporting-time, Search Console composition, and stable action-model coverage use local mocks and fixtures; no customer site or external service is required.
 - Performance v1 passed `npm run verify`: 120 tests across 10 test files, typecheck, and the production dashboard build. Performance/Search Console composition uses mocked API responses; no real Google credentials or calls are required.
 - Search Console v1 passed `npm run verify`: 116 tests across 9 test files, typecheck, and the production dashboard build. Google/OAuth calls are fully mocked; no real credentials or external Google calls are used.
@@ -23,11 +24,17 @@ Current snapshot as of 2026-10-28.
 
 ## Current development
 
-- Active phase: Lead & Action Tracking v1 is implemented and verified locally on top of the Performance/Search Console milestone.
+- Active phase: deterministic What Changed Insights v1 is implemented and verified locally on top of Performance v1.
 - The prior P1 Reliability & Trust sequence is deferred, not removed.
 - Tracking Health v1 implementation, migration, Settings UI, and tests are reconciled on top of the production P0 history in `3d188c8` (`feat: add tracking health v1`), with the scheduler/Hono export compatibility fix in `8b66842`.
 - Migration `0008_tracking_health.sql` is applied on staging. The hourly retention cron is deployed at `17 * * * *`.
 - Production remains on the P0 release; Tracking Health has not been deployed or migrated there.
+
+## Insights v1 implementation
+
+- Performance now requests the same source, page, action, and action-page breakdowns for the automatic previous period through `compare=previous`.
+- A standalone deterministic rule layer applies absolute, percentage, and minimum-volume thresholds; ranks candidates; caps category repetition; and returns at most four owner-facing observations.
+- The compact What changed panel covers material traffic and action movement, contact intent, source/page movement, leading action pages, loading, and neutral no-insight states. Optional typed Search Console inputs require no live Google credentials.
 
 ## Search Console v1 implementation
 
@@ -49,6 +56,7 @@ Current snapshot as of 2026-10-28.
 ## Git state
 
 - Performance v1 and Lead & Action Tracking v1 are reconciled on the isolated `performance-v1` branch based on Search Console v1 commit `255091e`.
+- Insights v1 is implemented on the focused `insights-v1` branch from Performance v1 commit `052c790`.
 - The branch is not merged to `main`; no staging or production deployment was performed.
 
 ## Remaining product gaps
@@ -56,6 +64,7 @@ Current snapshot as of 2026-10-28.
 - Performance v1 has no trend chart, saved report, export, or drill-down from its summary lists.
 - Search Console data is fetched on demand and is limited to the top ten query/page rows in the owner view; there is no scheduled sync or historical cache.
 - Real OAuth/property behavior still needs staging validation after the manual Google configuration and explicit staging migration/deploy approval.
+- Search insight rules accept mocked current/previous values, but Performance does not yet request a previous Search Console period or show Google change insights.
 
 ## Environments
 

@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { describe, expect, it } from 'vitest';
 import type { Site } from '../src/worker/env';
-import { breakdown, overview } from '../src/worker/stats';
+import { breakdown, overview, reportRange } from '../src/worker/stats';
 
 class SqliteD1Statement {
   private args: any[] = [];
@@ -86,6 +86,19 @@ function ctx(db: D1Database, from: number, to: number, granularity: 'hour' | 'da
 }
 
 describe('reporting time-base boundaries', () => {
+  it('reuses the automatic previous period for comparison breakdowns', () => {
+    expect(reportRange({ from: jan15, to: jan16, granularity: 'day' }, 'UTC', 'previous')).toEqual({
+      from: jan15 - 24 * 3_600_000,
+      to: jan15,
+      granularity: 'day',
+    });
+    expect(reportRange({ from: jan15, to: jan16, granularity: 'day' }, 'UTC')).toEqual({
+      from: jan15,
+      to: jan16,
+      granularity: 'day',
+    });
+  });
+
   it('groups automatic and configured actions by the page that generated them', async () => {
     const { sqlite, db } = fixture();
     try {
