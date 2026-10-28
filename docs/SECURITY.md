@@ -42,6 +42,8 @@ Cloudflare creates separate Workers and non-inherited secrets for named Wrangler
 | `ADMIN_PASSWORD` | Self-hosted mode | Cloudflare Worker secret. Local development only: ignored `.dev.vars`. Never store in `wrangler.jsonc`, source, CI YAML, screenshots, or logs. | Set a new strong value with `wrangler secret put ADMIN_PASSWORD`. Because existing sessions do not depend on the password after login, rotate `SESSION_SECRET` at the same time when immediate session invalidation is required. |
 | `SESSION_SECRET` | All modes | Cloudflare Worker secret. Use a high-entropy random value unique to the environment. | Set a new value with `wrangler secret put SESSION_SECRET`. Rotation invalidates all existing 30-day dashboard sessions. |
 | `GOOGLE_CLIENT_SECRET` | Hosted mode only | Cloudflare Worker secret; source value belongs in the Google Cloud credential store. | Create/rotate in Google Cloud, update the Worker secret, verify OAuth, then revoke the old credential. |
+| `GSC_GOOGLE_CLIENT_SECRET` | Search Console only | Cloudflare Worker secret for the separate Search Console OAuth client. Never reuse it as an application session secret. | Rotate in Google Cloud and update the matching environment secret; existing refresh tokens may require re-consent if the OAuth client changes. |
+| `GSC_TOKEN_ENCRYPTION_KEY` | Search Console only | Base64-encoded, environment-unique 32-byte key in Cloudflare Worker secrets. It encrypts access and refresh tokens with AES-256-GCM and site/token-type AAD. | No transparent rotation exists in v1. Disconnect all integrations before replacing it, then reconnect them. A production rollout requires a dual-key/re-encryption plan before in-place rotation. |
 | `BILLING_WEBHOOK_SECRET` | Hosted billing only | Cloudflare Worker secret; source value belongs in Dodo's webhook configuration. | Coordinate replacement in Dodo and Cloudflare, verify signatures with the new value, then remove the old webhook/secret. Current code accepts one value, so there is no dual-secret overlap window. |
 
 Commands above target the top-level Worker. If a named production environment is added, use the matching Wrangler `--env production` flag. Secrets are scoped to a Worker/environment and are not inherited.
@@ -51,6 +53,8 @@ Commands above target the top-level Worker. If a named production environment is
 These values are not cryptographic secrets, but they are production configuration and should be environment-specific:
 
 - `GOOGLE_CLIENT_ID`
+- `GSC_GOOGLE_CLIENT_ID`
+- `GSC_OAUTH_REDIRECT_URI`
 - `ADMIN_EMAILS`
 - `PLAN_CHECKOUT_URL`
 - `PLAN_PRODUCT_ID`
@@ -71,6 +75,7 @@ Interactive Wrangler login credentials and automation values such as `CLOUDFLARE
 | --- | --- | --- |
 | `sites.api_key` | Bearer credential for server-side goals and generic payment ingestion | Plaintext in D1 and returned to an authenticated dashboard. Rotate from Site Settings; the old key stops working immediately. Update every caller. |
 | `sites.dodo_webhook_secret` | Verifies per-site Dodo webhooks | Plaintext in D1, masked in normal API responses. Replace it in Dodo and Site Settings as one coordinated change. There is no dual-secret overlap. |
+| `search_console_connections.*_token_encrypted` | Google Search Console delegated access | Independently encrypted AES-256-GCM envelopes bound to the Vysta site ID and token type. Never return or log them. Disconnecting or deleting the site deletes both tokens. |
 
 D1 access, exports, backups, dashboard sessions, and support logs must therefore be treated as sensitive. Restrict Cloudflare account access and do not share raw database exports through public issue trackers or CI artifacts.
 
@@ -86,6 +91,7 @@ The database also contains confidential or personal data even when a field is no
 - `login_failures`: source IP addresses and timestamps.
 - `users` in hosted mode: Google subject, email/name/avatar, Dodo customer/subscription/payment identifiers, and plan state.
 - `funnels` and `sites`: business configuration, domains, tracking IDs, and ownership.
+- `search_console_connections`: selected Google property, permission level, granted scope, token expiry/connection timestamps, and encrypted Google access/refresh tokens. Search query/page results are fetched on demand and are not persisted.
 
 Current retention is indefinite. There is no built-in export, erasure/anonymization, configurable retention, or privacy-request workflow.
 

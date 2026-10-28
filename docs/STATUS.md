@@ -11,6 +11,7 @@ Current snapshot as of 2026-10-28.
 
 ## Verification
 
+- Search Console v1 passed `npm run verify`: 116 tests across 9 test files, typecheck, and the production dashboard build. Google/OAuth calls are fully mocked; no real credentials or external Google calls are used.
 - The P0 release passed 101 tests across 8 test files, typecheck, production build, and both smoke suites.
 - Production canaries passed for legacy and current tracking, duplicate suppression, attribution, goals, reporting, and cleanup.
 - Tracking Health v1 passed `verify:full`: 106 tests across 8 test files, typecheck, production build, and both self-hosted and hosted smoke suites.
@@ -20,7 +21,7 @@ Current snapshot as of 2026-10-28.
 
 ## Current development
 
-- Active phase: Real Product Validation — Qavyo.
+- Active phase: Google Search Console v1 — backend implementation complete; real staging validation pending.
 - The prior P1 Reliability & Trust sequence is deferred, not removed.
 - Tracking Health v1 implementation, migration, Settings UI, and tests are reconciled on top of the production P0 history in `3d188c8` (`feat: add tracking health v1`), with the scheduler/Hono export compatibility fix in `8b66842`.
 - Migration `0008_tracking_health.sql` is applied on staging. The hourly retention cron is deployed at `17 * * * *`.
@@ -39,11 +40,25 @@ Current snapshot as of 2026-10-28.
 - Vysta's accuracy audit was correct that Qavyo already had `view_pricing`; the prior status statement calling that goal unsupported was wrong.
 - No GA4/GTM or Search Console verification is visible in the inspected Qavyo Pricing or static redesign source. Qavyo Pricing has no committed robots/sitemap route or canonical metadata, so the Vercel URL is operationally verified but not declared as a final SEO canonical.
 
+## Search Console v1 implementation
+
+- Customer websites are external black-box Vysta integrations. Search Console work does not depend on inspecting or changing customer hosting, source repositories, DNS, or tracker deployment.
+- Vysta already has authenticated, owner-scoped site routes through Hono and D1. The existing `loadSite` middleware is the authorization boundary for integration status, property discovery/selection, and performance data.
+- Existing Google OAuth handles hosted dashboard login only. Its `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` also enable hosted mode, so Search Console must use independent `GSC_*` configuration and a separate consent/callback path.
+- The minimum scope is `https://www.googleapis.com/auth/webmasters.readonly`. No Search Console write scope is planned.
+- Migration `0009_search_console.sql` adds one encrypted Search Console connection row per Vysta site, with a nullable selected property until discovery is complete. OAuth client credentials and the AES-GCM encryption key remain Cloudflare secrets.
+- The backend lists properties with `sites.list`, validates a selected exact property URI, and queries `searchAnalytics.query` on demand. It normalizes clicks, impressions, CTR, average position, date, query, page, and device for a later combined Performance view.
+- Search Console metrics will not be persisted or synchronized in v1. A separate aggregate query supplies totals so CTR and average position are not incorrectly averaged from dimension rows.
+- Google External OAuth apps in Testing mode are limited to configured test users, and Search Console refresh tokens expire after seven days. Weekly re-consent is expected during internal validation.
+- No GA4 integration, public OAuth onboarding/verification, full Search Console dashboard, production migration, or production deployment is part of this phase.
+- The generic server integration, authenticated site-scoped routes, callback ownership recheck, token refresh/reconnect handling, deletion cleanup, configuration documentation, and mocked security/isolation/pagination tests are implemented. No real Google credentials are needed by automated tests.
+- Real staging OAuth validation is not yet performed. It requires Google Cloud Testing-mode setup, four staging `GSC_*` bindings, migration/deploy approval, and a test account with access to a property containing data.
+
 ## Git state
 
 - GitHub `main` contains the four reviewed Tracking Health commits through `f62dd55` and the corrected Qavyo repository baseline in `660ad2b`.
 - The original Vysta worktree remains on `ff17b5a` because its `.git` ACL is read-only; documentation reconciliation continues through the isolated writable clone.
-- The validation-sprint roadmap and this status snapshot are committed separately from the implementation.
+- Search Console v1 is reconciled on the isolated `search-console-v1` branch and is not merged to `main`.
 
 ## Environments
 

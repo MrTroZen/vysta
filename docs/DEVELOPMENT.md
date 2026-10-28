@@ -35,6 +35,14 @@ ADMIN_PASSWORD=change-me
 SESSION_SECRET=any-long-random-string
 ```
 
+Search Console is optional. For real local OAuth validation, also set the four independent `GSC_*` values shown in `.dev.vars.example`. Generate `GSC_TOKEN_ENCRYPTION_KEY` with `openssl rand -base64 32`, and register this exact callback URI on a Google Web application OAuth client:
+
+```text
+http://localhost:8787/api/integrations/search-console/oauth/callback
+```
+
+The automated tests mock Google and use generated keys; they never require or contact a real Google account.
+
 Do not commit `.dev.vars`; it is ignored by Git. Use strong, unique values through `wrangler secret put` for deployed environments.
 
 ## Local D1

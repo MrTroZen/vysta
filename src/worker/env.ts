@@ -6,6 +6,14 @@ export interface Env {
   /** Random string used to sign the login cookie (`wrangler secret put SESSION_SECRET`). */
   SESSION_SECRET: string;
 
+  // ---- Google Search Console integration, independent from hosted login OAuth.
+  GSC_GOOGLE_CLIENT_ID?: string;
+  GSC_GOOGLE_CLIENT_SECRET?: string;
+  /** Exact callback URI registered on the Search Console OAuth client. */
+  GSC_OAUTH_REDIRECT_URI?: string;
+  /** Base64-encoded 32-byte AES key used only for stored Google tokens. */
+  GSC_TOKEN_ENCRYPTION_KEY?: string;
+
   // ---- Hosted (SaaS) mode, all optional. Setting the two Google values turns it on.
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;

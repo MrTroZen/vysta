@@ -26,6 +26,9 @@ Worker secrets are managed through Cloudflare's encrypted secret store and injec
 ### Secret Inventory
 - `ADMIN_PASSWORD`: Master password for single-administrator dashboard authentication.
 - `SESSION_SECRET`: Cryptographic key used to sign and verify 30-day session cookies (`ml_auth`).
+- `GSC_GOOGLE_CLIENT_ID` / `GSC_GOOGLE_CLIENT_SECRET`: Credentials for the dedicated Search Console OAuth client. They are independent of hosted-login `GOOGLE_*` values.
+- `GSC_OAUTH_REDIRECT_URI`: Exact environment-specific callback URI registered with Google.
+- `GSC_TOKEN_ENCRYPTION_KEY`: Base64-encoded 32-byte AES-256-GCM key used to encrypt Google access and refresh tokens in D1.
 
 ### Secret Rotation Procedure
 1. **Rotate Administrator Password:**
@@ -40,6 +43,28 @@ Worker secrets are managed through Cloudflare's encrypted secret store and injec
    npx wrangler secret put SESSION_SECRET --env production
    ```
    Enter a new high-entropy random string. All current sessions will immediately become invalid.
+
+3. **Search Console token-encryption key:**
+   Do not rotate `GSC_TOKEN_ENCRYPTION_KEY` in place. Existing rows can only be decrypted with the old key. Before production use, implement a versioned dual-key/re-encryption procedure; until then, disconnect every Search Console connection (deleting its encrypted tokens), set the new key, and reconnect each site. Never reuse this key across local, staging, and production.
+
+### Search Console staging configuration
+
+Create an OAuth client in Google Cloud with the Search Console API enabled, External/Testing consent, the read-only Search Console scope, and explicit test users. Register the exact staging callback:
+
+```text
+https://vysta-staging.vysta.workers.dev/api/integrations/search-console/oauth/callback
+```
+
+Set all four bindings on staging; named-environment secrets are not inherited:
+
+```powershell
+npx wrangler secret put GSC_GOOGLE_CLIENT_ID --env staging
+npx wrangler secret put GSC_GOOGLE_CLIENT_SECRET --env staging
+npx wrangler secret put GSC_OAUTH_REDIRECT_URI --env staging
+npx wrangler secret put GSC_TOKEN_ENCRYPTION_KEY --env staging
+```
+
+Use `openssl rand -base64 32` for the encryption key. Apply `0009_search_console.sql` to staging before deploying the Worker. Testing-mode refresh tokens for an External Google OAuth app expire after seven days, so internal validation should expect weekly re-consent. Do not set these values or apply the migration to production without a separately approved production rollout.
 
 ---
 
@@ -146,4 +171,4 @@ The retention handler is exported as the Worker's `scheduled` handler and config
 curl http://127.0.0.1:8787/cdn-cgi/local/scheduled
 ```
 
-Deleting a site also deletes its browser/server idempotency receipts, hourly health rows, and last-seen health summary. Health rows never contain rejected request bodies, URLs, visitor IDs, session IDs, API keys, or webhook secrets.
+Deleting a site also deletes its browser/server idempotency receipts, hourly health rows, last-seen health summary, and encrypted Search Console tokens. Health rows never contain rejected request bodies, URLs, visitor IDs, session IDs, API keys, or webhook secrets.

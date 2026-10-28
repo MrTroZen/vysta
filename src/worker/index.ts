@@ -9,6 +9,15 @@ import { handleDodoWebhook, handleGoalApi, handlePaymentApi, rematchPayments } f
 import { isAllowedOrigin, SECURITY_HEADERS } from './lib/security';
 import { breakdown, customers, funnel, makeCtx, overview, realtime, visitorProfile, visitors, type FunnelStep } from './stats';
 import { getTrackingHealth, pruneTrackingHealth } from './trackingHealth';
+import {
+  searchConsoleDisconnect,
+  searchConsoleOauthCallback,
+  searchConsoleOauthStart,
+  searchConsolePerformance,
+  searchConsoleProperties,
+  searchConsoleSelectProperty,
+  searchConsoleStatus,
+} from './searchConsole';
 
 const app = new Hono<AppEnv>();
 const MAX_FAILURES = 10;
@@ -77,6 +86,7 @@ app.post('/api/auth/login', async (c) => {
 
 app.get('/api/auth/google', googleStart);
 app.get('/api/auth/google/callback', googleCallback);
+app.get('/api/integrations/search-console/oauth/callback', searchConsoleOauthCallback);
 
 app.post('/api/auth/logout', async (c) => {
   if (!isAllowedOrigin({ get: (h) => c.req.header(h) ?? null }, c.req.url)) {
@@ -234,6 +244,15 @@ app.post('/api/sites/:id/rotate-key', async (c) => {
 
 app.get('/api/sites/:id/tracking-health', async (c) => c.json(await getTrackingHealth(c.env.DB, c.get('site').id)));
 
+// ---------- Google Search Console (server-side integration only)
+
+app.get('/api/sites/:id/integrations/search-console/status', searchConsoleStatus);
+app.get('/api/sites/:id/integrations/search-console/oauth/start', searchConsoleOauthStart);
+app.get('/api/sites/:id/integrations/search-console/properties', searchConsoleProperties);
+app.put('/api/sites/:id/integrations/search-console/property', searchConsoleSelectProperty);
+app.get('/api/sites/:id/integrations/search-console/performance', searchConsolePerformance);
+app.delete('/api/sites/:id/integrations/search-console', searchConsoleDisconnect);
+
 const SITE_DATA_TABLES = [
   'events',
   'sessions',
@@ -245,6 +264,7 @@ const SITE_DATA_TABLES = [
   'server_goal_receipts',
   'tracking_health_hourly',
   'site_tracking_health',
+  'search_console_connections',
 ] as const;
 
 export async function deleteSiteData(db: D1Database, id: string) {

@@ -1,2 +1,9 @@
 ADMIN_PASSWORD=change-me
 SESSION_SECRET=any-long-random-string
+
+# Optional Google Search Console integration. Keep this OAuth client separate from dashboard login.
+GSC_GOOGLE_CLIENT_ID=replace-with-google-web-client-id
+GSC_GOOGLE_CLIENT_SECRET=replace-with-google-web-client-secret
+GSC_OAUTH_REDIRECT_URI=http://localhost:8787/api/integrations/search-console/oauth/callback
+# Generate with: openssl rand -base64 32
+GSC_TOKEN_ENCRYPTION_KEY=replace-with-base64-encoded-32-byte-key
