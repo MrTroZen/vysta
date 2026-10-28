@@ -1,6 +1,7 @@
 import type { Context } from 'hono';
 import { getSite, type AppEnv, type Site } from './env';
 import { verifyStandardWebhook } from './lib/crypto';
+import { recordServerGoal, type ServerGoalWarningReason } from './trackingHealth';
 
 export function currencyDecimals(currency: string): number {
   try {
@@ -392,23 +393,29 @@ export async function handlePaymentApi(c: Context<AppEnv>) {
 export async function handleGoalApi(c: Context<AppEnv>) {
   const site = await siteFromApiKey(c);
   if (!site) return c.json({ error: 'invalid api key' }, 401);
+  const now = Date.now();
+  const warning = async (message: string, status: 400 | 404 | 409 | 500, reason: ServerGoalWarningReason, goalName?: string | null) => {
+    await recordServerGoal(c.env.DB, site.id, now, 'warning', goalName, reason);
+    return c.json({ error: message }, status);
+  };
   const b = await c.req.json<Record<string, unknown>>().catch(() => null);
   const name = str(b?.name)?.slice(0, 64);
   const requestedSessionId = str(b?.session_id);
   const requestedVisitorId = str(b?.visitor_id);
   if (!name || (!requestedSessionId && !requestedVisitorId)) {
-    return c.json({ error: 'name and either session_id or visitor_id are required' }, 400);
+    return warning('name and either session_id or visitor_id are required', 400, 'invalid_request', name);
   }
 
   const headerKey = idempotencyKey(c.req.header('idempotency-key'));
   const bodyKey = idempotencyKey(b?.idempotency_key);
-  if (headerKey.error || bodyKey.error) return c.json({ error: headerKey.error ?? bodyKey.error }, 400);
+  if (headerKey.error || bodyKey.error) {
+    return warning(headerKey.error ?? bodyKey.error ?? 'invalid idempotency key', 400, 'invalid_idempotency_key', name);
+  }
   if (headerKey.key && bodyKey.key && headerKey.key !== bodyKey.key) {
-    return c.json({ error: 'header and body idempotency keys must match' }, 400);
+    return warning('header and body idempotency keys must match', 400, 'invalid_idempotency_key', name);
   }
   const key = headerKey.key ?? bodyKey.key;
   const properties = goalProperties(b ?? {});
-  const now = Date.now();
   const requestHash = key
     ? await goalRequestHash({
         session_id: requestedSessionId,
@@ -426,13 +433,16 @@ export async function handleGoalApi(c: Context<AppEnv>) {
       .bind(site.id, key)
       .first<{ request_hash: string; session_id: string; visitor_id: string }>();
     if (receipt) {
-      if (receipt.request_hash !== requestHash) return c.json({ error: 'idempotency key already used for another request' }, 409);
+      if (receipt.request_hash !== requestHash) {
+        return warning('idempotency key already used for another request', 409, 'idempotency_conflict', name);
+      }
       await c.env.DB.prepare(
         `UPDATE server_goal_receipts SET last_received_at = ?, duplicate_count = duplicate_count + 1
          WHERE site_id = ? AND idempotency_key = ?`,
       )
         .bind(now, site.id, key)
         .run();
+      await recordServerGoal(c.env.DB, site.id, now, 'duplicate', name);
       return c.json({ ok: true, duplicate: true, session_id: receipt.session_id, visitor_id: receipt.visitor_id });
     }
   }
@@ -452,9 +462,9 @@ export async function handleGoalApi(c: Context<AppEnv>) {
       )
         .bind(site.id, requestedVisitorId, cutoff)
         .first<{ id: string; visitor_id: string; exit_page: string | null }>();
-  if (!s) return c.json({ error: 'recent session not found' }, 404);
+  if (!s) return warning('recent session not found', 404, 'session_not_found', name);
   if (requestedVisitorId && requestedVisitorId !== s.visitor_id) {
-    return c.json({ error: 'session_id does not belong to visitor_id' }, 409);
+    return warning('session_id does not belong to visitor_id', 409, 'session_mismatch', name);
   }
 
   if (!key || !requestHash) {
@@ -464,6 +474,7 @@ export async function handleGoalApi(c: Context<AppEnv>) {
         "INSERT INTO events (site_id, session_id, visitor_id, ts, type, name, path, props) VALUES (?, ?, ?, ?, 'goal', ?, ?, ?)",
       ).bind(site.id, s.id, s.visitor_id, now, name, s.exit_page, properties.stored),
     ]);
+    await recordServerGoal(c.env.DB, site.id, now, 'accepted', name);
     return c.json({ ok: true, duplicate: false, session_id: s.id, visitor_id: s.visitor_id });
   }
 
@@ -494,11 +505,15 @@ export async function handleGoalApi(c: Context<AppEnv>) {
   )
     .bind(site.id, key)
     .first<{ request_hash: string; processing_token: string; session_id: string; visitor_id: string }>();
-  if (!receipt) return c.json({ error: 'could not record idempotency receipt' }, 500);
-  if (receipt.request_hash !== requestHash) return c.json({ error: 'idempotency key already used for another request' }, 409);
+  if (!receipt) return warning('could not record idempotency receipt', 500, 'receipt_failed', name);
+  if (receipt.request_hash !== requestHash) {
+    return warning('idempotency key already used for another request', 409, 'idempotency_conflict', name);
+  }
+  const duplicate = receipt.processing_token !== token;
+  await recordServerGoal(c.env.DB, site.id, now, duplicate ? 'duplicate' : 'accepted', name);
   return c.json({
     ok: true,
-    duplicate: receipt.processing_token !== token,
+    duplicate,
     session_id: receipt.session_id,
     visitor_id: receipt.visitor_id,
   });

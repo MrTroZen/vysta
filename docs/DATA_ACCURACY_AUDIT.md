@@ -10,7 +10,7 @@ Vysta's basic first-party visitor continuity, normal 30-minute browser session r
 
 The planned P0 accuracy defects are corrected and protected by deterministic tests: reporting time bases, timezone boundaries, duplicate tracker initialization, browser replay, explicit-source attribution, and the server-goal contract.
 
-Engaged time should be treated as a visible-tab estimate, not human attention, and it currently double-counts simultaneous visible tabs. Client goals remain interaction signals; authoritative backend goals require a durable idempotency key. Reporting clocks are explicit and consistent with each metric's documented basis.
+Engaged time should still be treated as a visible-tab estimate, not human attention, because simultaneous visible tabs count independently. Client goals remain interaction signals; authoritative backend goals require a durable idempotency key. Reporting clocks are explicit and consistent with each metric's documented basis.
 
 ## Accuracy test matrix
 
@@ -333,7 +333,7 @@ CREATE INDEX ingestion_receipts_site_time
 - Pings and identifies need receipts too; event-table uniqueness alone cannot protect their session/visitor mutations.
 - Deduplication does not replace a singleton tracker guard, goal debounce policy, rate limiting, or bot controls.
 
-P0.5 adds the forward-only `0007_server_goal_idempotency.sql` receipt table without rewriting stored analytics data.
+Migration `0006_event_idempotency.sql` implements this design; migration `0007_server_goal_idempotency.sql` separately protects keyed server goals.
 
 ## Source/channel audit
 
@@ -419,30 +419,20 @@ Choose one authoritative goal name per business outcome. A recommended naming sp
 
 Do not send the same semantic goal from both client and server: server-goal idempotency keys deduplicate server requests only and do not coalesce a separate browser goal. If both stages matter, keep distinct names and build the funnel between them. This audit makes no change to Qavyo's `view_pricing` goal.
 
-## Future Tracking Health design
+## Tracking Health v1
 
-Keep the first UI small: one compact card or settings section per website, not a new analytics dashboard.
+Tracking Health is implemented as one compact Settings section per website. Owner-facing wording deliberately separates **tracking requests** from **analytics events recorded**: pings, identify calls, safe retries, and rejected requests can prove that Vysta received a request without claiming that a page view, goal, or outbound click was added to analytics.
 
-### Useful fields
+The backend uses:
 
-- last accepted event time and type;
-- accepted events in last 24 hours, split into pageviews/goals/pings/other;
-- distinct sessions and visitors created in last 24 hours;
-- rejected counts by stable reason: malformed/body-too-large, unknown site, invalid domain, inactive plan, bot, session mismatch, duplicate, rate-limited;
-- tracker versions observed and percentage of legacy events without `eid`;
-- last duplicate time/count;
-- last valid pageview hostname;
-- "script detected" as a carefully worded derived state: recent valid tracker event observed, not proof that every page is installed.
+- `site_tracking_health` for last-seen browser request/event/hostname/tracker version and server-goal request/event details;
+- `tracking_health_hourly` for site-scoped UTC hourly request outcomes by source, event type, and stable warning reason;
+- the existing `ingestion_receipts` and `server_goal_receipts` to distinguish safe retries from new events;
+- a scheduled hourly pruning handler that retains exactly 720 current-and-prior hourly buckets (30 days).
 
-### Backend data needed first
+Server-side goals are a separate channel. A site that has never called the server-goal endpoint shows the neutral **Not used** state, not a warning. Browser and server-goal warnings use owner-readable explanations; their technical reason codes are disclosed only inside the warning details.
 
-1. `site_ingestion_health` for last-seen timestamps/version/host and small lifetime counters.
-2. `site_ingestion_daily` keyed by `(site_id, local_or_utc_day, outcome, event_type)` for bounded trend counts.
-3. `ingestion_receipts` for duplicate counts once idempotency exists.
-4. A stable rejection enum in the collector rather than scattered early returns.
-5. Retention/rollup policy so health accounting does not grow per request forever.
-
-Rejected requests create an abuse-accounting problem: writing one D1 row per rejected request lets attackers amplify cost. Aggregate with platform-native rate/analytics facilities where possible, sample noisy reasons, and only site-scope a rejection after safely validating a real site. Do not retain raw rejected payloads by default.
+Oversized or malformed bodies, bot requests dropped before site lookup, and unknown site IDs are intentionally not written to site health. There is no safe owner scope for them, and writing attacker-controlled rejection rows would create abuse amplification. V1 records only warnings that can be tied to a validated site, stores no rejected bodies, and does not claim that a recent valid event proves installation on every page.
 
 ## Areas already accurate or well protected
 
@@ -466,7 +456,7 @@ Rejected requests create an abuse-accounting problem: writing one D1 row per rej
 - Safari/privacy-browser cookie expiry and browser minimize behavior;
 - same-timestamp and 100,000-row funnel boundaries;
 - first-party proxy header/geo/cache integration tests;
-- Tracking Health counters, which do not exist yet;
+- browser-level visual automation across multiple engines (the deterministic health data/state tests are automated);
 - high-volume/query-plan tests.
 
 ## Recommended implementation order
@@ -486,7 +476,7 @@ Rejected requests create an abuse-accounting problem: writing one D1 row per rej
 2. Unify Online query semantics and centralize the active-window constants.
 3. Preserve valid structured goal properties and add schema/size validation.
 4. Add a real Next.js/browser navigation fixture and app-referrer corpus.
-5. Implement bounded Tracking Health aggregates and outcome enums before a UI.
+5. **Complete:** implement bounded Tracking Health aggregates and stable outcome enums before the compact Settings UI.
 6. Prototype the optional first-party proxy with strict headers/cache/security, then measure collection loss rather than estimating it.
 7. Add rate/shape diagnostics for unknown scripted traffic without broadening the UA regex blindly.
 

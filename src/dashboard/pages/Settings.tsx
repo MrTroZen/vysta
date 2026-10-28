@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { navigate } from '../App';
 import { Favicon } from '../components/Icons';
+import { TrackingHealth } from '../components/TrackingHealth';
 import { buildAiPrompt } from '../lib/aiPrompt';
 import { api, type Site } from '../lib/api';
 
@@ -76,10 +77,12 @@ export function Settings({ siteId }: { siteId: string }) {
         <button className="btn" onClick={() => navigate(`/site/${site.id}`)}>
           ← Dashboard
         </button>
-        <div className="flex items-center gap-2 font-semibold">
+        <h1 className="flex items-center gap-2 font-semibold">
           <Favicon domain={site.domain} size={22} /> {site.name}
-        </div>
+        </h1>
       </div>
+
+      <TrackingHealth siteId={site.id} />
 
       <AiSetup site={site} origin={origin} />
 

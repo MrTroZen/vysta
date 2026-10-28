@@ -112,6 +112,8 @@ describe('event ingestion characterization', () => {
       expect.stringContaining('INSERT OR IGNORE INTO sessions'),
       expect.stringContaining('UPDATE sessions SET pageviews = pageviews + 1'),
       expect.stringContaining('INSERT INTO events'),
+      expect.stringContaining('INSERT INTO site_tracking_health'),
+      expect.stringContaining('INSERT INTO tracking_health_hourly'),
     ]);
 
     const session = statements[1].args;
@@ -170,6 +172,8 @@ describe('event ingestion characterization', () => {
     expect(existing.batches[0].map((statement) => statement.sql)).toEqual([
       expect.stringContaining('UPDATE sessions SET pageviews = pageviews + 1'),
       expect.stringContaining('INSERT INTO events'),
+      expect.stringContaining('INSERT INTO site_tracking_health'),
+      expect.stringContaining('INSERT INTO tracking_health_hourly'),
     ]);
   });
 
@@ -193,7 +197,12 @@ describe('event ingestion characterization', () => {
   it('drops an event when an existing session belongs to another visitor', async () => {
     const f = fakeDb({ first: () => ({ visitor_id: 'different-visitor' }) });
     await ingest(f.db, site, payload(), new URL('https://example.com/landing'), ua, geo, now);
-    expect(f.batches).toHaveLength(0);
+    expect(f.batches).toHaveLength(1);
+    expect(f.batches[0].map((statement) => statement.sql)).toEqual([
+      expect.stringContaining('INSERT INTO site_tracking_health'),
+      expect.stringContaining('INSERT INTO tracking_health_hourly'),
+    ]);
+    expect(f.batches[0][1].args).toContain('session_mismatch');
   });
 
   it('bounds each engaged-time ping and binds it to the session visitor', async () => {
@@ -207,11 +216,10 @@ describe('event ingestion characterization', () => {
       geo,
       now,
     );
-    expect(f.runs).toEqual([
-      {
-        sql: expect.stringContaining('duration = MIN(duration + ?, 86400000)'),
-        args: [600_000, now, site.id, 'session-0001', 'visitor-0001'],
-      },
+    expect(f.batches[0]).toEqual([
+      { sql: expect.stringContaining('duration = MIN(duration + ?, 86400000)'), args: [600_000, now, site.id, 'session-0001', 'visitor-0001'] },
+      { sql: expect.stringContaining('INSERT INTO site_tracking_health'), args: expect.any(Array) },
+      { sql: expect.stringContaining('INSERT INTO tracking_health_hourly'), args: expect.any(Array) },
     ]);
   });
 
@@ -234,7 +242,9 @@ describe('event ingestion characterization', () => {
     const f = fakeDb({ first: () => ({ visitor_id: 'visitor-0001' }) });
     const goal = payload({ t: 'goal', n: '   ' });
     await ingest(f.db, site, goal, new URL(goal.u), ua, geo, now);
-    expect(f.batches).toHaveLength(0);
+    expect(f.batches).toHaveLength(1);
+    expect(f.batches[0]).toHaveLength(2);
+    expect(f.batches[0][1].args).toContain('invalid_goal');
   });
 });
 
@@ -274,7 +284,8 @@ describe('collector validation characterization', () => {
     const call = appFor(f.db);
     const response = await call(JSON.stringify(payload({ u: 'https://evil.example.net/' })), ua);
     expect(response.status).toBe(403);
-    expect(f.batches).toHaveLength(0);
+    expect(f.batches).toHaveLength(1);
+    expect(f.batches[0][1].args).toContain('invalid_domain');
   });
 
   it('returns 404 for a well-shaped unknown site id', async () => {

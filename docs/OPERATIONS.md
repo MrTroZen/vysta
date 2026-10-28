@@ -133,3 +133,17 @@ npx wrangler rollback --env production
 Because D1 migrations are forward-only, database rollbacks must be performed using:
 1. **D1 Time Travel restore** (restoring database state to the point in time immediately prior to deployment), or
 2. Writing a forward-compensating migration file.
+
+---
+
+## 7. Tracking Health Retention
+
+Tracking Health request outcomes are aggregated into UTC hourly rows in `tracking_health_hourly`. The Worker cron runs at minute 17 of every hour and removes rows older than the 720-bucket window: the current hour plus the previous 719 hours (30 days). The small `site_tracking_health` last-seen summary remains until its site is deleted.
+
+The retention handler is exported as the Worker's `scheduled` handler and configured in every Wrangler environment. Test it locally after applying migrations:
+
+```powershell
+curl http://127.0.0.1:8787/cdn-cgi/local/scheduled
+```
+
+Deleting a site also deletes its browser/server idempotency receipts, hourly health rows, and last-seen health summary. Health rows never contain rejected request bodies, URLs, visitor IDs, session IDs, API keys, or webhook secrets.

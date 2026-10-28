@@ -1,13 +1,14 @@
 import { Hono, type Context, type Next } from 'hono';
 import { cors } from 'hono/cors';
 import { handleEvent } from './collect';
-import { forgetSite, type AppEnv, type Site } from './env';
+import { forgetSite, type AppEnv, type Env, type Site } from './env';
 import { clearSession, currentUser, googleCallback, googleStart, isHosted, requireUser, setSession, siteAccessSql } from './auth';
 import { billingWebhook, checkout, planInfo } from './billing';
 import { passwordsMatch, randomId } from './lib/crypto';
 import { handleDodoWebhook, handleGoalApi, handlePaymentApi, rematchPayments } from './payments';
 import { isAllowedOrigin, SECURITY_HEADERS } from './lib/security';
 import { breakdown, customers, funnel, makeCtx, overview, realtime, visitorProfile, visitors, type FunnelStep } from './stats';
+import { getTrackingHealth, pruneTrackingHealth } from './trackingHealth';
 
 const app = new Hono<AppEnv>();
 const MAX_FAILURES = 10;
@@ -231,13 +232,32 @@ app.post('/api/sites/:id/rotate-key', async (c) => {
   return c.json({ api_key: key });
 });
 
+app.get('/api/sites/:id/tracking-health', async (c) => c.json(await getTrackingHealth(c.env.DB, c.get('site').id)));
+
+const SITE_DATA_TABLES = [
+  'events',
+  'sessions',
+  'visitors',
+  'payments',
+  'funnels',
+  'payment_claims',
+  'ingestion_receipts',
+  'server_goal_receipts',
+  'tracking_health_hourly',
+  'site_tracking_health',
+] as const;
+
+export async function deleteSiteData(db: D1Database, id: string) {
+  await db.batch(
+    SITE_DATA_TABLES.map((table) => db.prepare(`DELETE FROM ${table} WHERE site_id = ?`).bind(id)).concat(
+      db.prepare('DELETE FROM sites WHERE id = ?').bind(id),
+    ),
+  );
+}
+
 app.delete('/api/sites/:id', async (c) => {
   const id = c.get('site').id;
-  await c.env.DB.batch(
-    ['events', 'sessions', 'visitors', 'payments', 'funnels', 'payment_claims', 'ingestion_receipts', 'server_goal_receipts'].map((t) =>
-      c.env.DB.prepare(`DELETE FROM ${t} WHERE site_id = ?`).bind(id),
-    ).concat(c.env.DB.prepare('DELETE FROM sites WHERE id = ?').bind(id)),
-  );
+  await deleteSiteData(c.env.DB, id);
   forgetSite(id);
   return c.json({ ok: true });
 });
@@ -299,4 +319,11 @@ app.all('/api/*', (c) => c.json({ error: 'not found' }, 404));
 // Everything else is the dashboard (static files).
 app.all('*', (c) => c.env.ASSETS.fetch(c.req.raw));
 
-export default app;
+export { app };
+
+export default {
+  fetch: (request: Request, env: Env, executionCtx: ExecutionContext) => app.fetch(request, env, executionCtx),
+  scheduled: (controller: ScheduledController, env: Env, executionCtx: ExecutionContext) => {
+    executionCtx.waitUntil(pruneTrackingHealth(env.DB, controller.scheduledTime));
+  },
+} satisfies ExportedHandler<Env>;

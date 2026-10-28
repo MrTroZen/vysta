@@ -131,6 +131,14 @@ describe('server-side goal contract', () => {
       expect(
         sqlite.prepare('SELECT duplicate_count FROM server_goal_receipts WHERE site_id = ? AND idempotency_key = ?').get(site.id, body.idempotency_key),
       ).toEqual({ duplicate_count: 1 });
+      expect(
+        sqlite
+          .prepare("SELECT outcome, count FROM tracking_health_hourly WHERE site_id = ? AND source = 'server_goal' ORDER BY outcome")
+          .all(site.id),
+      ).toEqual([
+        { outcome: 'accepted', count: 1 },
+        { outcome: 'duplicate', count: 1 },
+      ]);
     } finally {
       sqlite.close();
     }
@@ -162,6 +170,14 @@ describe('server-side goal contract', () => {
       expect((await goal(db, site.api_key, { session_id: 'session-stale', name: 'too_late' })).status).toBe(404);
       expect((await goal(db, site.api_key, { visitor_id: 'visitor-stale', name: 'too_late' })).status).toBe(404);
       expect(sqlite.prepare("SELECT COUNT(*) AS n FROM events WHERE type = 'goal'").get()).toEqual({ n: 0 });
+      expect(
+        sqlite
+          .prepare("SELECT reason, count FROM tracking_health_hourly WHERE site_id = ? AND source = 'server_goal' ORDER BY reason")
+          .all(site.id),
+      ).toEqual([
+        { reason: 'session_mismatch', count: 1 },
+        { reason: 'session_not_found', count: 2 },
+      ]);
     } finally {
       sqlite.close();
     }

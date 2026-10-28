@@ -81,6 +81,17 @@ curl -X POST https://vysta-production.vysta.workers.dev/api/v1/goals \
 
 Send `name` plus either the captured `session_id` or `visitor_id`. A supplied session ID is used exactly and must belong to the visitor when both IDs are sent; without it, Vysta uses that visitor's latest session. Sessions must have been active within the last 30 days. Use a durable, unique `Idempotency-Key` header (or `idempotency_key` body field) for confirmed backend outcomes: retrying the same request is safe, while reusing the key for different content returns `409`. Legacy `props` and requests without an idempotency key remain accepted, but unkeyed retries are not deduplicated.
 
+### Tracking health interpretation
+
+Site Settings reports browser tracking and server-side goals separately:
+
+- **Tracking requests** include valid tracker calls, maintenance calls such as pings/identify, safe retries, and site-scoped warnings.
+- **Analytics events recorded** include only page views, browser goals, and outbound clicks that were added to reports.
+- **Server-side goals — Not used** means this site has never called the server-goal endpoint. It is neutral and requires no action.
+- **Working** means Vysta recently received valid data for this site; it does not prove the script is installed on every page.
+
+Recent counters use UTC hourly aggregates. Vysta keeps 30 days (720 hourly buckets), stores no rejected request bodies, and shows technical reason codes only inside warning details.
+
 ---
 
 ## 5. Event Naming Conventions

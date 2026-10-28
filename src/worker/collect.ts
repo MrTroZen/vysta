@@ -4,6 +4,7 @@ import { siteOwnerActive } from './auth';
 import { getSite, type AppEnv, type Site } from './env';
 import { isBot, parseUA } from './lib/ua';
 import { creditedSessionSql } from './payments';
+import { recordBrowserWarning, trackingHealthStatements } from './trackingHealth';
 
 const TYPES = new Set(['pageview', 'goal', 'outbound', 'ping', 'identify']);
 const MAX_PING_MS = 10 * 60_000;
@@ -121,19 +122,27 @@ export async function handleEvent(c: Context<AppEnv>) {
 
   const site = await getSite(c.env.DB, body.w);
   if (!site) return c.body(null, 404);
+  const now = Date.now();
   // Hosted mode: stop recording when the owner's plan has ended (quietly, so their site never shows errors).
-  if (!siteOwnerActive(c.env, site)) return c.body(null, 202);
+  if (!siteOwnerActive(c.env, site)) {
+    await recordBrowserWarning(c.env.DB, site.id, now, body.t, 'inactive_plan', clip(body.tv, 32));
+    return c.body(null, 202);
+  }
 
   let url: URL;
   try {
     url = new URL(body.u);
   } catch {
+    await recordBrowserWarning(c.env.DB, site.id, now, body.t, 'invalid_url', clip(body.tv, 32));
     return c.body(null, 400);
   }
   // Only accept data for the site's own domain, so nobody can pollute your stats from elsewhere.
-  if (!belongsTo(url.hostname, site.domain)) return c.body(null, 403);
+  if (!belongsTo(url.hostname, site.domain)) {
+    await recordBrowserWarning(c.env.DB, site.id, now, body.t, 'invalid_domain', clip(body.tv, 32));
+    return c.body(null, 403);
+  }
 
-  await ingest(c.env.DB, site, body, url, ua, geoOf(c), Date.now());
+  await ingest(c.env.DB, site, body, url, ua, geoOf(c), now);
   return c.body(null, 202);
 }
 
@@ -195,6 +204,26 @@ export async function ingest(
   const path = normalizePath(url.pathname);
   const { t, vid, sid } = body;
   const gate = gateFor(body);
+  const health = (outcome: 'accepted' | 'duplicate', condition?: { sql: string; args: unknown[] }) =>
+    trackingHealthStatements(
+      db,
+      {
+        siteId: site.id,
+        at: now,
+        source: 'browser',
+        outcome,
+        eventType: t,
+        hostname: url.hostname.toLowerCase(),
+        trackerVersion: clip(body.tv, 32),
+      },
+      condition,
+    );
+  const acceptedHealth = gate
+    ? health('accepted', { sql: RECEIPT_PREDICATE, args: gateArgs(site.id, gate) })
+    : health('accepted');
+  const duplicateHealth = gate
+    ? health('duplicate', { sql: `NOT ${RECEIPT_PREDICATE}`, args: gateArgs(site.id, gate) })
+    : [];
 
   if (t === 'ping') {
     const ms = Math.max(0, Math.min(MAX_PING_MS, Math.round(Number(body.d) || 0)));
@@ -208,14 +237,18 @@ export async function ingest(
           site.id,
           gate,
         ),
+        ...acceptedHealth,
+        ...duplicateHealth,
         finishReceipt(db, site.id, gate, now),
       ]);
       return;
     }
-    await db
-      .prepare('UPDATE sessions SET duration = MIN(duration + ?, 86400000), last_seen_at = ? WHERE site_id = ? AND id = ? AND visitor_id = ?')
-      .bind(ms, now, site.id, sid, vid)
-      .run();
+    await db.batch([
+      db
+        .prepare('UPDATE sessions SET duration = MIN(duration + ?, 86400000), last_seen_at = ? WHERE site_id = ? AND id = ? AND visitor_id = ?')
+        .bind(ms, now, site.id, sid, vid),
+      ...acceptedHealth,
+    ]);
     return;
   }
 
@@ -236,7 +269,11 @@ export async function ingest(
       site.id,
       gate,
     );
-    await db.batch(gate ? [startReceipt(db, site.id, t, gate, now), insert, update, finishReceipt(db, site.id, gate, now)] : [insert, update]);
+    await db.batch(
+      gate
+        ? [startReceipt(db, site.id, t, gate, now), insert, update, ...acceptedHealth, ...duplicateHealth, finishReceipt(db, site.id, gate, now)]
+        : [insert, update, ...acceptedHealth],
+    );
     return;
   }
 
@@ -247,6 +284,7 @@ export async function ingest(
 
   // Prevent session hijacking: reject events if the session was created by a different visitor.
   if (existing && existing.visitor_id !== vid) {
+    await recordBrowserWarning(db, site.id, now, t, 'session_mismatch', clip(body.tv, 32));
     return;
   }
 
@@ -271,7 +309,10 @@ export async function ingest(
     stmts.push(...claimPayment(db, site.id, vid, url, now, gate));
   } else if (t === 'goal') {
     const name = clip(body.n, 64);
-    if (!name) return;
+    if (!name) {
+      await recordBrowserWarning(db, site.id, now, t, 'invalid_goal', clip(body.tv, 32));
+      return;
+    }
     const props = body.p && typeof body.p === 'object' ? JSON.stringify(body.p).slice(0, 1000) : null;
     stmts.push(
       gatedUpdate(
@@ -285,7 +326,10 @@ export async function ingest(
     );
   } else if (t === 'outbound') {
     const target = clip(body.n, 500);
-    if (!target) return;
+    if (!target) {
+      await recordBrowserWarning(db, site.id, now, t, 'invalid_event', clip(body.tv, 32));
+      return;
+    }
     stmts.push(
       gatedUpdate(
         db,
@@ -297,6 +341,7 @@ export async function ingest(
       insertEvent(db, site.id, sid, vid, now, 'outbound', target, path, null, gate),
     );
   }
+  stmts.push(...acceptedHealth, ...duplicateHealth);
   if (gate) stmts.push(finishReceipt(db, site.id, gate, now));
   await db.batch(stmts);
 }
