@@ -19,23 +19,22 @@ Use Qavyo as the first real product/property to validate Vysta's installation, c
 
 ## Verified starting point
 
-- Qavyo is a separate, clean Git repository at local `main` commit `84a4039`.
-- The Qavyo repository contains 120 top-level HTML routes: 2 Final, 36 Existing, 80 Scaffolded, and 2 marked Retire in its route inventory.
-- No Vysta script tag, `data-website-id`, `data-ml-goal`, `window.minilytics` call, or `view_pricing` implementation exists in the current Qavyo tree or its local Git history.
-- No GA4 measurement ID, Google tag, or GTM container is configured in Qavyo. The only Google Analytics reference is general consent guidance in the delivery plan.
-- No Search Console verification meta tag/file is present. `robots.txt` and `sitemap.xml` are also absent; Search Console and sitemap work remain future delivery-plan tasks.
-- Qavyo's Start Free and Talk to Sales forms are browser-only demonstrations and transmit nothing. They must not be counted as completed signups or leads.
+- The live Vysta-connected property comes from the separate Next.js repository at `E:\Qavyo\Pricing` / `MrTroZen/Qavyo-pricing`, not the static `Qavyo-website` redesign repository.
+- Qavyo Pricing `main` commit `0796e27` installs the production Vysta tracker in the root layout with public site ID `4g360v0d0i6n153r` and configures the `view_pricing` browser goal on the hero's See Pricing link.
+- The committed root layout applies to the `/` and `/pricing` routes. Vysta can therefore collect its standard page views, route changes, acquisition fields, devices, outbound clicks, engagement pings, and the explicit `view_pricing` goal.
+- The local Qavyo Pricing worktree contains an uncommitted consent-gated replacement plus local tracking documentation. Its build artifacts contain that version, but no Vercel project metadata or deployment workflow is present, so repository evidence alone cannot establish whether the live deployment uses the committed always-on loader or the local consent-gated loader.
+- The local tracking document records `Europe/London`, `GBP`, and `qavyo-pricing.vercel.app`, but those values are uncommitted and were not verified against Vysta production.
+- The static `Qavyo-website` repository remains a separate 120-route redesign source with no Vysta instrumentation. Its browser-only Start Free and Talk to Sales forms are not live conversion outcomes for the current pricing property.
+- No GA4/GTM or Search Console verification is configured in either inspected Qavyo source. Qavyo Pricing also has no committed `robots`/`sitemap` route or canonical production-domain metadata.
 
 ## Validation sequence
 
-1. Reconcile the intended Qavyo property/domain and install Vysta once with a dedicated Qavyo site ID; verify pageviews and Tracking Health before adding goals.
-2. Validate representative Final, Existing, Scaffolded, utility, and Retire routes so route status is not confused with real public demand.
-3. Add only high-intent client goals after the installation baseline is healthy:
-   - `start_free_intent` for navigation into the 30-day access flow;
-   - `talk_to_sales_intent` for navigation into the sales conversation flow.
-4. Treat `view_pricing` as proposed/unverified until it exists in Qavyo source. Do not claim demo-form completion as a signup or lead.
-5. Observe real traffic, acquisition, route demand, and goal quality long enough to identify concrete defects or product decisions before resuming feature expansion.
-6. Keep GA4, GTM, and Search Console implementation outside this sprint unless a later task explicitly authorizes them.
+1. Do not reinstall Vysta or create a duplicate property. Confirm the live Qavyo Pricing deployment source and reconcile the committed loader with the uncommitted consent-gated variant first.
+2. Use the existing site ID and real Vysta reports to baseline `/`, `/pricing`, acquisition, device, outbound, engagement, and `view_pricing` behavior.
+3. Verify Tracking Health and consent behavior against the deployment variant that is actually live before changing measurement.
+4. Treat `view_pricing` as the only verified explicit Qavyo goal. Do not promote the static redesign's demo forms or proposed intent names into live goals without a real product outcome and a separate approval.
+5. Observe genuine traffic and goal quality long enough to identify concrete defects or product decisions before expanding measurement.
+6. Resolve the production domain, deployment source, indexability, canonical, robots, and sitemap decisions before Search Console. Keep GA4/GTM and Search Console implementation outside this sprint unless explicitly authorized.
 
 ## Deferred P1 — Remaining Reliability & Trust
 

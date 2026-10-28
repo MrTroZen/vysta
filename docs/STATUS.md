@@ -28,21 +28,20 @@ Current snapshot as of 2026-10-28.
 
 ## Qavyo validation baseline
 
-- Qavyo is a separate nested Git repository. Its working tree is clean on `main` at `84a4039` (`fix: refine public website cleanup`, 2026-10-21).
-- Its route inventory exactly matches the 120 top-level HTML files on disk: 2 Final, 36 Existing, 80 Scaffolded, and 2 marked Retire.
-- Final routes: `index.html`, `pricing.html`.
-- Existing routes include the 12 utility/system pages plus 24 product, restaurant, retail, intelligence, and marketing pages recorded in `Qavyo-website/docs/PAGE-INVENTORY.md`.
-- Retire routes: `broiler-farming.html`, `farm.html`.
-- No Vysta installation or goal instrumentation exists in the Qavyo working tree or local Qavyo Git history: no tracker script, site ID, collector override, `data-ml-goal`, `window.minilytics`, or `view_pricing` implementation was found.
-- Vysta's accuracy audit mentions an existing Qavyo `view_pricing` goal, but the current Qavyo source and history do not support that claim.
-- No GA4 measurement ID, Google tag, or GTM container is configured. A delivery-plan link to Google Analytics consent guidance is documentation only.
-- No Search Console verification meta tag/file, `sitemap.xml`, or `robots.txt` exists. Search Console verification and sitemap/robots work are still future tasks in Qavyo's delivery plan.
-- `start-free.html` and `talk-to-sales.html` use demo forms that validate locally and redirect to a success page without transmitting data. They are not real signup or lead completions.
-- The two defensible near-term client goals are `start_free_intent` and `talk_to_sales_intent`, attached to navigation into those flows. Completed signup/lead goals should wait for real backend outcomes.
+- The live Vysta-connected source is the separate Next.js repository at `E:\Qavyo\Pricing`, whose GitHub `main` is `0796e27` (`feat: add Vysta analytics`, 2026-10-27).
+- That committed root layout loads `https://vysta-production.vysta.workers.dev/js/script.js` with public site ID `4g360v0d0i6n153r` across the `/` and `/pricing` routes.
+- The only explicit Vysta goal in committed or local Qavyo Pricing source is `view_pricing`, attached to the hero's See Pricing link. No identify call, server-side goal, `start_free_intent`, or `talk_to_sales_intent` is configured.
+- Standard tracker measurement available for consented/loaded visits includes page views and SPA route changes, acquisition/referrer/campaign fields, device data, outbound clicks, engagement pings, and `view_pricing`.
+- The local Qavyo Pricing worktree is dirty: it replaces the committed always-on loader with an uncommitted consent-gated component and has untracked analytics support files and `docs/TRACKING.md`. A local Next.js build from 2026-10-27 contains that consent-gated version, but there is no `.vercel` metadata or deployment workflow proving which variant is live.
+- The untracked tracking document records timezone `Europe/London`, currency `GBP`, and host `qavyo-pricing.vercel.app`; these values were not verified against Vysta production.
+- `Qavyo-website` at `84a4039` is a separate static redesign repository. Its 120-route inventory and lack of Vysta code were correctly observed, but it was incorrectly treated as the source of the already-live pricing property.
+- Vysta's accuracy audit was correct that Qavyo already had `view_pricing`; the prior status statement calling that goal unsupported was wrong.
+- No GA4/GTM or Search Console verification is visible in the inspected Qavyo Pricing or static redesign source. Qavyo Pricing also has no committed robots/sitemap route or canonical production-domain metadata.
 
 ## Git state
 
-- The original Vysta worktree remains on `ff17b5a` because its `.git` ACL is read-only. Tracking Health was reconciled through the isolated writable clone on the `tracking-health-v1` branch, based on GitHub `main` commit `0b18a0e`.
+- GitHub `main` was safely fast-forwarded from `0b18a0e` through the four reviewed Tracking Health commits and now points to `f62dd55`.
+- The original Vysta worktree remains on `ff17b5a` because its `.git` ACL is read-only; documentation reconciliation continues through the isolated writable clone.
 - The validation-sprint roadmap and this status snapshot are committed separately from the implementation.
 
 ## Environments
