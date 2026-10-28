@@ -321,9 +321,8 @@ app.all('*', (c) => c.env.ASSETS.fetch(c.req.raw));
 
 export { app };
 
-export default {
-  fetch: (request: Request, env: Env, executionCtx: ExecutionContext) => app.fetch(request, env, executionCtx),
+export default Object.assign(app, {
   scheduled: (controller: ScheduledController, env: Env, executionCtx: ExecutionContext) => {
     executionCtx.waitUntil(pruneTrackingHealth(env.DB, controller.scheduledTime));
   },
-} satisfies ExportedHandler<Env>;
+}) satisfies typeof app & ExportedHandler<Env>;
