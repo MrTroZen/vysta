@@ -85,7 +85,7 @@ The database also contains confidential or personal data even when a field is no
 
 - `visitors`: application user IDs, names, email addresses, and stable visitor IDs.
 - `sessions`: acquisition data, URLs/paths, referrers, campaign values, approximate country/region/city and rounded coordinates, browser/OS/device, and stable visitor/session IDs.
-- `events`: paths, event/goal names, outbound destinations, and arbitrary JSON properties that may accidentally contain sensitive data.
+- `events`: paths, event/goal names, outbound destinations, and arbitrary JSON properties that may accidentally contain sensitive data. Reserved automatic phone, WhatsApp, email, and form actions store only their generic name and normalized current page; properties are discarded and contact/form destinations or contents are never sent.
 - `payments`: transaction, customer, subscription, visitor and session identifiers; email/name; amount/currency; and attribution metadata.
 - `payment_claims`: payment/subscription identifiers mapped to visitor IDs.
 - `login_failures`: source IP addresses and timestamps.

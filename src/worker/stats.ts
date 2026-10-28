@@ -333,6 +333,21 @@ export async function breakdown(ctx: Ctx, dim: string, limit = 100): Promise<Bre
     return merge(v.results as any[], r.results as any[]);
   }
 
+  if (dim === 'action_page') {
+    const f = filterSql(ctx.filters);
+    const join = hasFilters(ctx.filters) ? 'JOIN sessions s ON s.site_id = e.site_id AND s.id = e.session_id' : '';
+    const rows = await db
+      .prepare(
+        `SELECT e.name AS label, e.path AS extra, COUNT(DISTINCT e.visitor_id) AS visitors, COUNT(*) AS pageviews
+         FROM events e ${join}
+         WHERE e.site_id = ? AND e.type = 'goal' AND e.ts >= ? AND e.ts < ?${f.sql}
+         GROUP BY e.name, e.path ORDER BY visitors DESC, pageviews DESC, e.name ASC, e.path ASC LIMIT ${lim}`,
+      )
+      .bind(ctx.site.id, ctx.range.from, ctx.range.to, ...f.params)
+      .all<{ label: string | null; extra: string | null; visitors: number; pageviews: number }>();
+    return rows.results.map((row) => ({ ...row, revenue: 0, customers: 0 }));
+  }
+
   if (dim === 'exit_link' || dim === 'goal') {
     const type = dim === 'goal' ? 'goal' : 'outbound';
     const f = filterSql(ctx.filters);

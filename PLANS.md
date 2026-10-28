@@ -11,41 +11,17 @@ Build Vysta into a trustworthy, privacy-focused analytics platform that gives sm
 
 ## Current phase
 
-Google Search Console v1 — Implementation complete; staging validation pending
-
-## Recorded Qavyo validation objective
-
-Use Qavyo as the first real product/property to validate Vysta's installation, collection, acquisition, goal, and owner-facing diagnostic behavior before adding more analytics depth or Google integrations.
-
-## Recorded Qavyo starting point
-
-- The live Vysta-connected property comes from the separate Next.js repository at `E:\Qavyo\Pricing` / `MrTroZen/Qavyo-pricing`, not the static `Qavyo-website` redesign repository.
-- Qavyo Pricing `main` commit `0796e27` installs the production Vysta tracker in the root layout with public site ID `4g360v0d0i6n153r` and configures the `view_pricing` browser goal on the hero's See Pricing link.
-- The committed root layout applies to the `/` and `/pricing` routes. Vysta can therefore collect its standard page views, route changes, acquisition fields, devices, outbound clicks, engagement pings, and the explicit `view_pricing` goal.
-- GitHub records a successful Vercel deployment for commit `0796e27`. The public `/` and `/pricing` routes resolve without redirect at `https://qavyo-pricing.vercel.app/`, and their delivered HTML contains the direct Vysta loader with no consent key or consent UI. Production therefore uses the committed always-on tracker.
-- The local Qavyo Pricing worktree's consent-gated replacement, analytics support files, and tracking document are uncommitted and are not the deployed production revision. Preserve them as a local experiment until their intent is decided; do not commit or deploy them implicitly.
-- `qavyo-pricing.vercel.app` is the verified current production and validation host. The local tracking document records `Europe/London` and `GBP`, but those two Vysta settings were not verified against production.
-- The static `Qavyo-website` repository remains a separate 120-route redesign source with no Vysta instrumentation. Its browser-only Start Free and Talk to Sales forms are not live conversion outcomes for the current pricing property.
-- No GA4/GTM or Search Console verification is configured in either inspected Qavyo source. Qavyo Pricing also has no committed `robots`/`sitemap` route or canonical production-domain metadata.
-
-## Recorded Qavyo validation sequence
-
-1. Do not reinstall Vysta or create a duplicate property. Use the existing `qavyo-pricing.vercel.app` property and site ID as the current validation baseline.
-2. Use the existing site ID and real Vysta reports to baseline `/`, `/pricing`, acquisition, device, outbound, engagement, and `view_pricing` behavior.
-3. Keep the uncommitted consent-gated experiment separate from production work until it is explicitly accepted or discarded. Production is currently always-on.
-4. Treat `view_pricing` as the only verified explicit Qavyo goal. Do not promote the static redesign's demo forms or proposed intent names into live goals without a real product outcome and a separate approval.
-5. Observe genuine traffic and goal quality long enough to identify concrete defects or product decisions before expanding measurement.
-6. Search Console may target the verified Vercel URL as a URL-prefix property. Decide whether to keep that host or wait for a custom long-term domain before treating it as Qavyo's final SEO canonical; robots, sitemap, and canonical metadata remain unimplemented. Keep GA4/GTM and Search Console implementation outside this sprint unless explicitly authorized.
+Lead & Action Tracking v1 — implemented and verified locally on top of Performance v1
 
 ## Objective and boundaries
 
-Add the minimum generic, server-side Search Console integration needed to validate Google organic-search data inside Vysta and support a later combined Performance view.
+Make common high-intent website actions visible without per-site JavaScript, while preserving configured goals and the existing analytics model.
 
-- Customer websites are external black-box integrations. This work does not inspect or modify their hosting, repositories, DNS, tracker installation, or deployments.
-- Use Google OAuth in Testing mode with explicitly listed test users.
-- Request only `https://www.googleapis.com/auth/webmasters.readonly`.
-- Support exactly one selected Search Console property per Vysta site in v1.
-- Do not add GA4, public OAuth onboarding/verification, a full dashboard, scheduled synchronization, or production deployment in this phase.
+- Detect generic phone, WhatsApp, email, and native form intent in the existing tracker and goal pipeline.
+- Never collect contact destinations, form contents, field values, or raw URLs for automatic actions.
+- Report distinct people, action counts, and originating pages in owner-friendly language.
+- Keep explicit browser and server-side goals backward compatible.
+- Do not add CRM attribution, call tracking, revenue attribution, funnels, GA4, AI insights, customer-specific behavior, or deployment work.
 
 ## Proposed architecture
 
@@ -180,7 +156,11 @@ type SearchPerformanceResponse = {
 
 ## Implementation status
 
-The generic backend is implemented in source-control scope: forward migration, independent `GSC_*` bindings, AES-256-GCM token envelopes, signed short-lived OAuth state, consent/callback and refresh handling, property discovery/selection, normalized Search Analytics totals and allowlisted dimensions, authenticated site-scoped routes, deletion cleanup, and mocked tests. The Performance dashboard, GA4, public OAuth onboarding, production migration, and production deployment remain out of scope.
+The generic backend is implemented in source-control scope: forward migration, independent `GSC_*` bindings, AES-256-GCM token envelopes, signed short-lived OAuth state, consent/callback and refresh handling, property discovery/selection, normalized Search Analytics totals and allowlisted dimensions, authenticated site-scoped routes, deletion cleanup, and mocked tests.
+
+Performance v1 adds an owner-focused site page with date ranges, automatic previous-period comparison, visitors, pageviews, actions, customers, traffic sources, best pages, action performance, and optional Google Search summary/query/page reporting. Settings now supports connection, property selection, reconnection, errors, and disconnect. Vysta analytics remain useful and independently available in every Search Console state.
+
+Lead & Action Tracking v1 reuses goal events for privacy-safe automatic phone, WhatsApp, email, and native form-submit intent. Reserved generic names carry no destination or form properties. Performance and dashboard reporting present automatic and configured actions together, with originating-page breakdowns and explicit intent-versus-outcome language.
 
 Real staging validation remains pending Google Cloud configuration, staging secrets, explicit approval to apply the staging migration/deploy, and a consenting test account with Search Console property access.
 
@@ -195,7 +175,7 @@ Real staging validation remains pending Google Cloud configuration, staging secr
 7. Implement the typed Search Analytics client and normalized totals/rows response for `date`, `query`, `page`, and `device`.
 8. Add site-scoped routes with authentication, ownership, CSRF, input bounds, and safe error mapping.
 9. Add mocked route/service tests for successful consent, state rejection, cross-site access rejection, refresh, missing refresh token, invalid grant, property validation, pagination, normalization, and deletion cleanup.
-10. Add only a minimal internal connection/status control if needed for validation; defer the combined Performance dashboard.
+10. Add owner-facing connection/property controls and the combined Performance v1 experience using mocked Google responses.
 11. Run `npm run verify`, then validate against local D1. Staging OAuth validation requires separate approval and configuration; do not deploy production.
 
 ## Google-account blockers
@@ -221,7 +201,7 @@ The remaining P1 sequence stays planned but is paused during Search Console v1:
 
 ## Later roadmap
 
-- Combined Vysta + Search Console Performance dashboard
+- Trend charts and deeper drill-downs for Performance
 - GA4 integration
 - Public OAuth onboarding and Google verification
 - P2 — Analytics Depth

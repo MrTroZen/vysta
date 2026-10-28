@@ -11,6 +11,8 @@ Current snapshot as of 2026-10-28.
 
 ## Verification
 
+- The reconciled Performance v1 and Lead & Action Tracking v1 branch passed `npm run verify`: 130 tests across 12 test files, typecheck, and the production dashboard build. Tracker, ingestion, server-goal, reporting-time, Search Console composition, and stable action-model coverage use local mocks and fixtures; no customer site or external service is required.
+- Performance v1 passed `npm run verify`: 120 tests across 10 test files, typecheck, and the production dashboard build. Performance/Search Console composition uses mocked API responses; no real Google credentials or calls are required.
 - Search Console v1 passed `npm run verify`: 116 tests across 9 test files, typecheck, and the production dashboard build. Google/OAuth calls are fully mocked; no real credentials or external Google calls are used.
 - The P0 release passed 101 tests across 8 test files, typecheck, production build, and both smoke suites.
 - Production canaries passed for legacy and current tracking, duplicate suppression, attribution, goals, reporting, and cleanup.
@@ -21,24 +23,11 @@ Current snapshot as of 2026-10-28.
 
 ## Current development
 
-- Active phase: Google Search Console v1 — backend implementation complete; real staging validation pending.
+- Active phase: Lead & Action Tracking v1 is implemented and verified locally on top of the Performance/Search Console milestone.
 - The prior P1 Reliability & Trust sequence is deferred, not removed.
 - Tracking Health v1 implementation, migration, Settings UI, and tests are reconciled on top of the production P0 history in `3d188c8` (`feat: add tracking health v1`), with the scheduler/Hono export compatibility fix in `8b66842`.
 - Migration `0008_tracking_health.sql` is applied on staging. The hourly retention cron is deployed at `17 * * * *`.
 - Production remains on the P0 release; Tracking Health has not been deployed or migrated there.
-
-## Qavyo validation baseline
-
-- The live Vysta-connected source is the separate Next.js repository at `E:\Qavyo\Pricing`, whose GitHub `main` is `0796e27` (`feat: add Vysta analytics`, 2026-10-27).
-- That committed root layout loads `https://vysta-production.vysta.workers.dev/js/script.js` with public site ID `4g360v0d0i6n153r` across the `/` and `/pricing` routes.
-- GitHub's Vercel status for `0796e27` is successful. Both public routes return `200` without redirect at `qavyo-pricing.vercel.app`; delivered HTML contains the production Vysta preload and serialized direct loader, with no consent key or consent UI. The live tracker is therefore the committed always-on variant.
-- The only explicit Vysta goal in committed or local Qavyo Pricing source is `view_pricing`, attached to the hero's See Pricing link. No identify call, server-side goal, `start_free_intent`, or `talk_to_sales_intent` is configured.
-- Standard tracker measurement available for loaded visits includes page views and SPA route changes, acquisition/referrer/campaign fields, device data, outbound clicks, engagement pings, and `view_pricing`.
-- The local Qavyo Pricing worktree is dirty: it replaces the always-on loader with an uncommitted consent-gated component and has untracked analytics support files and `docs/TRACKING.md`. Its local Next.js build contains that experiment, but it is not the production revision and was not committed or deployed by this validation work.
-- `qavyo-pricing.vercel.app` is the verified current production and validation property. The untracked tracking document records timezone `Europe/London` and currency `GBP`; those Vysta settings remain unverified because no production configuration query was authorized.
-- `Qavyo-website` at `84a4039` is a separate static redesign repository. Its 120-route inventory and lack of Vysta code were correctly observed, but it was incorrectly treated as the source of the already-live pricing property.
-- Vysta's accuracy audit was correct that Qavyo already had `view_pricing`; the prior status statement calling that goal unsupported was wrong.
-- No GA4/GTM or Search Console verification is visible in the inspected Qavyo Pricing or static redesign source. Qavyo Pricing has no committed robots/sitemap route or canonical metadata, so the Vercel URL is operationally verified but not declared as a final SEO canonical.
 
 ## Search Console v1 implementation
 
@@ -47,18 +36,26 @@ Current snapshot as of 2026-10-28.
 - Existing Google OAuth handles hosted dashboard login only. Its `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` also enable hosted mode, so Search Console must use independent `GSC_*` configuration and a separate consent/callback path.
 - The minimum scope is `https://www.googleapis.com/auth/webmasters.readonly`. No Search Console write scope is planned.
 - Migration `0009_search_console.sql` adds one encrypted Search Console connection row per Vysta site, with a nullable selected property until discovery is complete. OAuth client credentials and the AES-GCM encryption key remain Cloudflare secrets.
-- The backend lists properties with `sites.list`, validates a selected exact property URI, and queries `searchAnalytics.query` on demand. It normalizes clicks, impressions, CTR, average position, date, query, page, and device for a later combined Performance view.
+- The backend lists properties with `sites.list`, validates a selected exact property URI, and queries `searchAnalytics.query` on demand. It normalizes clicks, impressions, CTR, average position, date, query, page, and device for the site-level Performance view.
 - Search Console metrics will not be persisted or synchronized in v1. A separate aggregate query supplies totals so CTR and average position are not incorrectly averaged from dimension rows.
 - Google External OAuth apps in Testing mode are limited to configured test users, and Search Console refresh tokens expire after seven days. Weekly re-consent is expected during internal validation.
-- No GA4 integration, public OAuth onboarding/verification, full Search Console dashboard, production migration, or production deployment is part of this phase.
+- Settings now presents not-connected, property-required, selected, reconnect/error, property selection, and disconnect states in owner language.
+- Performance remains useful without Google: it combines Vysta visitors, pageviews, goals/actions, customers, sources, pages, and action breakdowns, with automatic previous-period comparison. When available, Search Console adds summary metrics, top queries, and top search pages; its loading, empty, upstream-error, and reconnect states are isolated from Vysta data.
+- No GA4 integration, AI insights, public OAuth onboarding/verification, production migration, or production deployment is part of this phase.
+- Lead & Action Tracking v1 uses the existing goal event model. The tracker recognizes phone, WhatsApp, email, and native form-submit intent under reserved generic names; destination/contact/form data is not transported, and ingestion discards properties for those names. Reporting includes action counts, distinct people, and action-by-page rows while keeping configured goals compatible.
 - The generic server integration, authenticated site-scoped routes, callback ownership recheck, token refresh/reconnect handling, deletion cleanup, configuration documentation, and mocked security/isolation/pagination tests are implemented. No real Google credentials are needed by automated tests.
 - Real staging OAuth validation is not yet performed. It requires Google Cloud Testing-mode setup, four staging `GSC_*` bindings, migration/deploy approval, and a test account with access to a property containing data.
 
 ## Git state
 
-- GitHub `main` contains the four reviewed Tracking Health commits through `f62dd55` and the corrected Qavyo repository baseline in `660ad2b`.
-- The original Vysta worktree remains on `ff17b5a` because its `.git` ACL is read-only; documentation reconciliation continues through the isolated writable clone.
-- Search Console v1 is reconciled on the isolated `search-console-v1` branch and is not merged to `main`.
+- Performance v1 and Lead & Action Tracking v1 are reconciled on the isolated `performance-v1` branch based on Search Console v1 commit `255091e`.
+- The branch is not merged to `main`; no staging or production deployment was performed.
+
+## Remaining product gaps
+
+- Performance v1 has no trend chart, saved report, export, or drill-down from its summary lists.
+- Search Console data is fetched on demand and is limited to the top ten query/page rows in the owner view; there is no scheduled sync or historical cache.
+- Real OAuth/property behavior still needs staging validation after the manual Google configuration and explicit staging migration/deploy approval.
 
 ## Environments
 

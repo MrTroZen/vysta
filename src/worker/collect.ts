@@ -1,5 +1,6 @@
 import type { Context } from 'hono';
 import { classify } from '../shared/sources';
+import { isAutomaticActionName } from '../shared/actions';
 import { siteOwnerActive } from './auth';
 import { getSite, type AppEnv, type Site } from './env';
 import { isBot, parseUA } from './lib/ua';
@@ -313,7 +314,8 @@ export async function ingest(
       await recordBrowserWarning(db, site.id, now, t, 'invalid_goal', clip(body.tv, 32));
       return;
     }
-    const props = body.p && typeof body.p === 'object' ? JSON.stringify(body.p).slice(0, 1000) : null;
+    // Reserved automatic actions never persist properties, even if a modified client sends them.
+    const props = !isAutomaticActionName(name) && body.p && typeof body.p === 'object' ? JSON.stringify(body.p).slice(0, 1000) : null;
     stmts.push(
       gatedUpdate(
         db,

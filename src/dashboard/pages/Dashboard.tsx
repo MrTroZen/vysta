@@ -31,7 +31,7 @@ const FILTER_LABELS: Record<string, { label: string; dim: string }> = {
   page: { label: 'Visited page', dim: 'page' },
   entry_page: { label: 'Entry page', dim: 'entry_page' },
   hostname: { label: 'Hostname', dim: 'hostname' },
-  goal: { label: 'Completed goal', dim: 'goal' },
+  goal: { label: 'Completed action', dim: 'goal' },
 };
 
 export function Dashboard({ siteId }: { siteId: string }) {

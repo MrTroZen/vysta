@@ -103,6 +103,24 @@ describe('server-side goal contract', () => {
   beforeEach(() => vi.setSystemTime(now));
   afterEach(() => vi.useRealTimers());
 
+  it('never stores properties under reserved automatic action names', async () => {
+    const { sqlite, db } = fixture();
+    try {
+      const response = await goal(db, site.api_key, {
+        session_id: 'session-old',
+        name: '__vysta_email_intent',
+        properties: { email: 'private@example.com' },
+      });
+      expect(response.status).toBe(200);
+      expect(sqlite.prepare('SELECT name, props FROM events WHERE site_id = ?').get(site.id)).toEqual({
+        name: '__vysta_email_intent',
+        props: null,
+      });
+    } finally {
+      sqlite.close();
+    }
+  });
+
   it('uses the requested session, documented properties, and an idempotency key exactly once', async () => {
     const { sqlite, db } = fixture();
     try {

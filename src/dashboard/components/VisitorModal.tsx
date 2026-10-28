@@ -1,4 +1,5 @@
 import { displayName } from '../../shared/names';
+import { actionLabel } from '../../shared/actions';
 import { useDash } from '../lib/context';
 import { countryName, fmtAgo, fmtDateTime, fmtDuration } from '../lib/format';
 import { useApi } from '../lib/useApi';
@@ -94,7 +95,7 @@ export function VisitorModal({ visitorId, onClose }: { visitorId: string | null;
                         {e.type === 'pageview' && <span className="text-stone-700">📄 {e.path}</span>}
                         {e.type === 'goal' && (
                           <span className="font-medium text-violet-700">
-                            🎯 {e.name} <span className="font-normal text-stone-400">on {e.path}</span>
+                            🎯 {actionLabel(e.name)} <span className="font-normal text-stone-400">on {e.path}</span>
                           </span>
                         )}
                         {e.type === 'outbound' && <span className="text-stone-600">↗ Left to {e.name?.replace(/^https?:\/\//, '')}</span>}

@@ -90,6 +90,26 @@ async function send(db: D1Database, targetSite: Site, body: ReturnType<typeof pa
 }
 
 describe('site-scoped browser event idempotency', () => {
+  it('drops properties from reserved automatic actions at ingestion', async () => {
+    const { sqlite, db } = fixture();
+    try {
+      await send(db, site, payload());
+      await send(db, site, payload({
+        t: 'goal',
+        eid: 'event-auto-0001',
+        n: '__vysta_phone_intent',
+        p: { phone: '+1-555-0100', form_value: 'private' },
+      }), now + 1);
+      expect(sqlite.prepare('SELECT name, path, props FROM events WHERE event_id = ?').get('event-auto-0001')).toEqual({
+        name: '__vysta_phone_intent',
+        path: '/',
+        props: null,
+      });
+    } finally {
+      sqlite.close();
+    }
+  });
+
   it('applies pageview, goal, outbound, ping, and identify mutations once per event id', async () => {
     const { sqlite, db } = fixture();
     try {

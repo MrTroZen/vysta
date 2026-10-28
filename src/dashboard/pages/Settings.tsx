@@ -126,8 +126,11 @@ async rewrites() {
         </p>
       </Section>
 
-      <Section title="2. Track button clicks & goals" desc="Goals show up in the Goals tab and can be used in funnels and filters.">
-        <Code>{`<!-- Any element: a click sends the goal -->
+      <Section title="2. Track visitor actions" desc="Phone, WhatsApp, email, and form intent are automatic. Add custom actions for anything specific to your business.">
+        <div className="mb-4 rounded-xl bg-stone-50 p-4 text-sm text-stone-600">
+          Automatic contact actions record only the action type and current page. Phone numbers, email addresses, form fields, messages, and destination links are not sent to Vysta. These are intent signals, not confirmed calls, messages, or leads.
+        </div>
+        <Code>{`<!-- Any element: a click sends a custom action -->
 <button data-ml-goal="signup_click">Get started</button>
 
 <!-- Extra details are attached as properties -->
@@ -140,7 +143,7 @@ async rewrites() {
   // After login: attach a name/email to the visitor
   window.minilytics('identify', { user_id: '123', email: 'jane@acme.com', name: 'Jane' });
 </script>`}</Code>
-        <p className="mt-3 text-sm text-stone-500">Outbound link clicks are tracked automatically (Exit link tab).</p>
+        <p className="mt-3 text-sm text-stone-500">Other outbound link clicks are tracked automatically. Contact destinations are excluded from outbound URL storage.</p>
       </Section>
 
       <Section

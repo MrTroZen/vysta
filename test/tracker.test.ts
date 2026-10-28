@@ -199,6 +199,25 @@ class TrackerHarness {
     this.dispatch(this.documentListeners, 'click', { target: element });
   }
 
+  clickLink(href: string, times = 1) {
+    const element = {
+      href,
+      attributes: [],
+      getAttribute: () => null,
+      closest: (selector: string) => selector === 'a[href]' ? element : null,
+    };
+    for (let i = 0; i < times; i++) this.dispatch(this.documentListeners, 'click', { target: element });
+  }
+
+  submitForm(times = 1) {
+    const form = { tagName: 'FORM', email: 'private@example.com', fields: { message: 'private message' } };
+    for (let i = 0; i < times; i++) this.dispatch(this.documentListeners, 'submit', { target: form });
+  }
+
+  submitNonForm() {
+    this.dispatch(this.documentListeners, 'submit', { target: { tagName: 'DIV' } });
+  }
+
   private addListener(store: Map<string, ((event: any) => void)[]>, type: string, listener: (event: any) => void) {
     store.set(type, [...(store.get(type) ?? []), listener]);
   }
@@ -222,7 +241,7 @@ describe('browser tracker characterization', () => {
     expect(tracker.requests).toHaveLength(1);
     expect(tracker.requests[0]).toMatchObject({
       t: 'pageview',
-      tv: '1',
+      tv: '2',
       eid: '00000000-0000-4000-8000-000000000003',
       u: 'https://example.com/welcome',
       r: 'https://www.google.com/search?q=vysta',
@@ -298,6 +317,61 @@ describe('browser tracker characterization', () => {
     ]);
   });
 
+  it('records generic phone, WhatsApp, and email intent without destination PII or duplicate outbound events', () => {
+    const tracker = new TrackerHarness({ url: 'https://example.com/contact' });
+    tracker.load();
+    tracker.clickLink('tel:+1-555-0100');
+    tracker.clickLink('https://wa.me/15550100?text=private-message');
+    tracker.clickLink('mailto:owner@example.com?subject=Private');
+
+    expect(tracker.requests.slice(1)).toMatchObject([
+      { t: 'goal', n: '__vysta_phone_intent', u: 'https://example.com/contact' },
+      { t: 'goal', n: '__vysta_whatsapp_intent', u: 'https://example.com/contact' },
+      { t: 'goal', n: '__vysta_email_intent', u: 'https://example.com/contact' },
+    ]);
+    expect(tracker.requests.some((request) => request.t === 'outbound')).toBe(false);
+    expect(JSON.stringify(tracker.requests)).not.toContain('15550100');
+    expect(JSON.stringify(tracker.requests)).not.toContain('owner@example.com');
+    expect(tracker.requests.slice(1).every((request) => request.p === undefined)).toBe(true);
+  });
+
+  it('recognizes WhatsApp app and web links while leaving ordinary outbound tracking unchanged', () => {
+    const tracker = new TrackerHarness();
+    tracker.load();
+    tracker.clickLink('whatsapp://send?phone=15550100');
+    tracker.clickLink('https://api.whatsapp.com/send?phone=15550100');
+    tracker.clickLink('https://partner.example.org/book?email=private@example.com');
+
+    expect(tracker.requests.filter((request) => request.n === '__vysta_whatsapp_intent')).toHaveLength(2);
+    expect(tracker.requests.at(-1)).toMatchObject({ t: 'outbound', n: 'https://partner.example.org/book' });
+    expect(JSON.stringify(tracker.requests)).not.toContain('private@example.com');
+  });
+
+  it('records genuine form submit intent without fields and suppresses rapid duplicate delivery', () => {
+    const tracker = new TrackerHarness({ url: 'https://example.com/request-a-quote' });
+    tracker.load();
+    tracker.submitNonForm();
+    tracker.submitForm(2);
+    expect(tracker.requests.filter((request) => request.n === '__vysta_form_intent')).toHaveLength(1);
+    expect(JSON.stringify(tracker.requests)).not.toContain('private@example.com');
+    expect(JSON.stringify(tracker.requests)).not.toContain('private message');
+
+    vi.setSystemTime(new Date('2026-10-23T12:00:01.001Z'));
+    tracker.submitForm();
+    expect(tracker.requests.filter((request) => request.n === '__vysta_form_intent')).toHaveLength(2);
+  });
+
+  it('attributes automatic actions to the current SPA page and still initializes listeners once', () => {
+    const tracker = new TrackerHarness({ url: 'https://example.com/' });
+    tracker.load();
+    tracker.load();
+    tracker.push('/contact');
+    tracker.clickLink('tel:+880123456789');
+    expect(tracker.requests.filter((request) => request.n === '__vysta_phone_intent')).toEqual([
+      expect.objectContaining({ u: 'https://example.com/contact' }),
+    ]);
+  });
+
   it('initializes once when the tracker script is included twice', () => {
     const tracker = new TrackerHarness();
     tracker.load();
@@ -316,7 +390,7 @@ describe('browser tracker characterization', () => {
     tracker.call('goal', 'signup');
     const eventIds = tracker.requests.map((request) => request.eid);
     expect(new Set(eventIds).size).toBe(3);
-    expect(tracker.requests.every((request) => request.tv === '1')).toBe(true);
+    expect(tracker.requests.every((request) => request.tv === '2')).toBe(true);
   });
 
   it('sends visible engaged time in pings and counts two visible tabs independently', () => {

@@ -10,7 +10,7 @@
   var allowLocal = script.hasAttribute('data-allow-localhost');
   var cookieDomain = script.getAttribute('data-domain');
   var VID = 'ml_vid', SID = 'ml_sid', YEAR = 31536000, SESSION = 1800;
-  var TRACKER_VERSION = '1', SINGLETON = '__minilyticsTracker';
+  var TRACKER_VERSION = '2', SINGLETON = '__minilyticsTracker';
 
   var queued = (w.minilytics && w.minilytics.q) || [];
   function noop() {}
@@ -145,10 +145,38 @@
     w.addEventListener('popstate', pageview);
   }
 
-  // ---- goals, outbound links, Dodo Payments checkout links
+  // ---- actions/goals, outbound links, Dodo Payments checkout links
+  // Reserved automatic names contain only an intent type. Destinations and form contents never leave the browser.
+  var AUTO_PHONE = '__vysta_phone_intent';
+  var AUTO_WHATSAPP = '__vysta_whatsapp_intent';
+  var AUTO_EMAIL = '__vysta_email_intent';
+  var AUTO_FORM = '__vysta_form_intent';
+  var automaticSeen = typeof WeakMap !== 'undefined' ? new WeakMap() : null;
   function goal(name, props) {
     if (!name) return;
     send('goal', { n: String(name).slice(0, 64), p: props || undefined }, true);
+  }
+  function automaticAction(name, element, event) {
+    if (event && event.__vystaAutomaticAction) return;
+    if (event) {
+      try { event.__vystaAutomaticAction = true; } catch (e) {}
+    }
+    if (automaticSeen && element) {
+      var previous = automaticSeen.get(element);
+      var now = Date.now();
+      if (previous && previous.name === name && now - previous.at < 1000) return;
+      automaticSeen.set(element, { name: name, at: now });
+    }
+    goal(name);
+  }
+  function automaticLinkAction(u) {
+    var protocol = u.protocol.toLowerCase();
+    if (protocol === 'tel:') return AUTO_PHONE;
+    if (protocol === 'mailto:') return AUTO_EMAIL;
+    if (protocol === 'whatsapp:') return AUTO_WHATSAPP;
+    var hostname = u.hostname.toLowerCase();
+    if (hostname === 'wa.me' || hostname === 'www.wa.me' || /(^|\.)whatsapp\.com$/.test(hostname)) return AUTO_WHATSAPP;
+    return null;
   }
   function attribution() {
     var id = ids();
@@ -207,6 +235,11 @@
       tagDodoLink(a);
       try {
         var u = new URL(a.href, loc.href);
+        var automaticName = automaticLinkAction(u);
+        if (automaticName) {
+          automaticAction(automaticName, a, e);
+          return; // Contact destinations can contain PII; do not also store them as outbound URLs.
+        }
         if (/^https?:$/.test(u.protocol) && u.hostname !== loc.hostname && !(domain && u.hostname.slice(-domain.length) === domain)) {
           send('outbound', { n: u.origin + u.pathname }, true);
         }
@@ -215,6 +248,11 @@
   }
   d.addEventListener('click', onClick, true);
   d.addEventListener('auxclick', onClick, true);
+  d.addEventListener('submit', function (e) {
+    var form = e.target;
+    if (!form || String(form.tagName || '').toLowerCase() !== 'form') return;
+    automaticAction(AUTO_FORM, form, e);
+  }, true);
 
   // ---- public API
   function api(cmd, a, b) {

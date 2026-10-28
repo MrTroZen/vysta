@@ -66,8 +66,9 @@ export function Legal({ page }: { page: 'terms' | 'privacy' | 'refund' }) {
             </p>
             <h2>Your visitors</h2>
             <p>
-              For websites you track, the script records pages viewed, referrers, campaign tags, button clicks you choose to track,
-              approximate location (country, region, city, coordinates rounded to about 1 km), browser, operating system and device. It
+              For websites you track, the script records pages viewed, referrers, campaign tags, actions you choose to track, generic phone,
+              WhatsApp, email and form intent, approximate location (country, region, city, coordinates rounded to about 1 km), browser,
+              operating system and device. Automatic actions do not include phone numbers, email addresses, form contents or destination links. It
               uses two first-party cookies (a random visitor id and a session id) and does not store IP addresses. Email addresses in page
               URLs are removed before sending. You decide whether to link visitors to customers (for example with payment metadata or
               identify()).

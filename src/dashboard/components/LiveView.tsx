@@ -2,6 +2,7 @@ import { ErrorEvent as MapLibreErrorEvent, GPUInitializationError, Map as MapLib
 import 'maplibre-gl/dist/maplibre-gl.css';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { actionLabel } from '../../shared/actions';
 import { displayName, persona } from '../../shared/names';
 import { api } from '../lib/api';
 import { useDash } from '../lib/context';
@@ -404,7 +405,7 @@ export default function LiveView({ onClose }: { onClose: () => void }) {
                 )}
                 {f.type === 'goal' && (
                   <>
-                    completed <span className="font-medium text-violet-500">{f.label}</span>
+                    took action <span className="font-medium text-violet-500">{actionLabel(f.label)}</span>
                   </>
                 )}
                 {f.type === 'payment' && (

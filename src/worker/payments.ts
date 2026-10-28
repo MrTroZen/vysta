@@ -1,4 +1,5 @@
 import type { Context } from 'hono';
+import { isAutomaticActionName } from '../shared/actions';
 import { getSite, type AppEnv, type Site } from './env';
 import { verifyStandardWebhook } from './lib/crypto';
 import { recordServerGoal, type ServerGoalWarningReason } from './trackingHealth';
@@ -415,7 +416,7 @@ export async function handleGoalApi(c: Context<AppEnv>) {
     return warning('header and body idempotency keys must match', 400, 'invalid_idempotency_key', name);
   }
   const key = headerKey.key ?? bodyKey.key;
-  const properties = goalProperties(b ?? {});
+  const properties = isAutomaticActionName(name) ? { raw: null, stored: null } : goalProperties(b ?? {});
   const requestHash = key
     ? await goalRequestHash({
         session_id: requestedSessionId,

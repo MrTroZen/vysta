@@ -86,6 +86,22 @@ function ctx(db: D1Database, from: number, to: number, granularity: 'hour' | 'da
 }
 
 describe('reporting time-base boundaries', () => {
+  it('groups automatic and configured actions by the page that generated them', async () => {
+    const { sqlite, db } = fixture();
+    try {
+      sqlite.prepare(
+        "INSERT INTO events (site_id, session_id, visitor_id, ts, type, name, path) VALUES (?, ?, ?, ?, 'goal', ?, ?)",
+      ).run(site.id, 'session-before', 'visitor-before', jan15 + 2 * 3_600_000, '__vysta_phone_intent', '/contact');
+      const rows = await breakdown(ctx(db, jan15, jan16, 'day'), 'action_page');
+      expect(rows).toEqual([
+        { label: '__vysta_phone_intent', extra: '/contact', visitors: 1, pageviews: 1, revenue: 0, customers: 0 },
+        { label: 'signup', extra: '/before', visitors: 1, pageviews: 1, revenue: 0, customers: 0 },
+      ]);
+    } finally {
+      sqlite.close();
+    }
+  });
+
   it('A: counts a pageview after midnight by event time, not by the session start day', async () => {
     const { sqlite, db } = fixture();
     try {

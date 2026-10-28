@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { actionLabel } from '../../shared/actions';
 import { api, qs, type BreakdownRow } from '../lib/api';
 import { displayName } from '../../shared/names';
 import { useDash } from '../lib/context';
@@ -17,7 +18,7 @@ export function GoalsPanel({ totalVisitors }: { totalVisitors: number }) {
         <div className="tabs">
           {(['goal', 'funnel', 'user', 'journey'] as const).map((t) => (
             <button key={t} className={`tab capitalize ${tab === t ? 'tab-active' : ''}`} onClick={() => setTab(t)}>
-              {t === 'journey' ? 'Journey' : t === 'user' ? 'Users' : t === 'goal' ? 'Goals' : 'Funnel'}
+              {t === 'journey' ? 'Journey' : t === 'user' ? 'Users' : t === 'goal' ? 'Actions' : 'Funnel'}
             </button>
           ))}
         </div>
@@ -40,7 +41,8 @@ function Goals({ totalVisitors }: { totalVisitors: number }) {
   if (!data.length)
     return (
       <div className="p-8 text-center text-sm text-stone-500">
-        No goals yet. Add <code className="rounded bg-stone-100 px-1">data-ml-goal="signup_click"</code> to any button, or call{' '}
+        No actions yet. Phone, WhatsApp, email, and form intent are tracked automatically. For other actions, add{' '}
+        <code className="rounded bg-stone-100 px-1">data-ml-goal="signup_click"</code> or call{' '}
         <code className="rounded bg-stone-100 px-1">window.minilytics('goal', 'signup')</code>.
       </div>
     );
@@ -48,7 +50,7 @@ function Goals({ totalVisitors }: { totalVisitors: number }) {
     <table className="w-full text-sm">
       <thead>
         <tr className="text-left text-stone-500">
-          <th className="px-3 pb-2 font-medium">Goal</th>
+          <th className="px-3 pb-2 font-medium">Action</th>
           <th className="pb-2 text-right font-medium">Visitors</th>
           <th className="pb-2 text-right font-medium">Completions</th>
           <th className="pb-2 text-right font-medium">Conversion</th>
@@ -57,8 +59,8 @@ function Goals({ totalVisitors }: { totalVisitors: number }) {
       </thead>
       <tbody>
         {data.map((g) => (
-          <tr key={g.label} className="cursor-pointer border-t border-stone-100 hover:bg-stone-50" onClick={() => addFilter('goal', g.label ?? '')} title="Filter by visitors who completed this goal">
-            <td className="px-3 py-2.5 font-medium">🎯 {g.label}</td>
+          <tr key={g.label} className="cursor-pointer border-t border-stone-100 hover:bg-stone-50" onClick={() => addFilter('goal', g.label ?? '')} title="Filter by visitors who took this action">
+            <td className="px-3 py-2.5 font-medium">🎯 {actionLabel(g.label)}</td>
             <td className="py-2.5 text-right">{fmtNumber(g.visitors)}</td>
             <td className="py-2.5 text-right">{fmtNumber(g.pageviews ?? 0)}</td>
             <td className="py-2.5 text-right">{totalVisitors ? fmtPct(g.visitors / totalVisitors, 1) : '—'}</td>
@@ -140,7 +142,7 @@ function Funnels() {
               </div>
               <div className="mt-2 truncate text-sm font-medium" title={s.value}>
                 {i + 1}. {s.type === 'goal' ? '🎯 ' : ''}
-                {s.value}
+                {s.type === 'goal' ? actionLabel(s.value) : s.value}
               </div>
               <div className="text-sm text-stone-600">
                 {fmtNumber(s.visitors)} visitors · {fmtPct(pct)}
@@ -184,7 +186,7 @@ function FunnelForm({ onDone, canCancel }: { onDone: (id?: string) => void; canC
         <div key={i} className="flex gap-2">
           <select className="input w-28" value={s.type} onChange={(e) => set(i, { type: e.target.value as 'page' | 'goal' })}>
             <option value="page">Page</option>
-            <option value="goal">Goal</option>
+            <option value="goal">Action</option>
           </select>
           <input className="input" value={s.value} onChange={(e) => set(i, { value: e.target.value })} placeholder={s.type === 'page' ? '/pricing' : 'signup'} />
           <button type="button" className="btn px-3" onClick={() => setSteps((x) => x.filter((_, j) => j !== i))} disabled={steps.length <= 2}>
