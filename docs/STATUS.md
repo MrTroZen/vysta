@@ -15,13 +15,14 @@ Current snapshot as of 2026-10-28.
 - Production canaries passed for legacy and current tracking, duplicate suppression, attribution, goals, reporting, and cleanup.
 - Tracking Health v1 passed `verify:full`: 106 tests across 8 test files, typecheck, production build, and both self-hosted and hosted smoke suites.
 - Staging canaries passed for Worker/D1 health, static tracker delivery, authentication boundaries, browser page-view health, server-goal health, hourly aggregates, last-seen summary fields, and isolated canary cleanup.
-- The 2026-10-28 integration review changed no runtime code, so the existing staging verification remains current and no redeploy was needed.
+- The final scheduler export compatibility fix passed 17 focused tests across 4 files, including the existing route-level site-deletion test, plus typecheck and production build.
+- Staging was redeployed after that fix. Health/D1 and tracker delivery return `200`, unauthenticated site access returns `401`, and both Tracking Health tables are present in staging D1.
 
 ## Current development
 
 - Active phase: Real Product Validation — Qavyo.
 - The prior P1 Reliability & Trust sequence is deferred, not removed.
-- Tracking Health v1 implementation, migration, Settings UI, and tests are reconciled on top of the production P0 history in source commit `3d188c8` (`feat: add tracking health v1`).
+- Tracking Health v1 implementation, migration, Settings UI, and tests are reconciled on top of the production P0 history in `3d188c8` (`feat: add tracking health v1`), with the scheduler/Hono export compatibility fix in `8b66842`.
 - Migration `0008_tracking_health.sql` is applied on staging. The hourly retention cron is deployed at `17 * * * *`.
 - Production remains on the P0 release; Tracking Health has not been deployed or migrated there.
 
@@ -41,7 +42,7 @@ Current snapshot as of 2026-10-28.
 
 ## Git state
 
-- The original Vysta worktree remains on `ff17b5a` because its `.git` ACL is read-only. Tracking Health was committed through the isolated writable clone at `3d188c8`, based on current GitHub `main` commit `0b18a0e`.
+- The original Vysta worktree remains on `ff17b5a` because its `.git` ACL is read-only. Tracking Health was reconciled through the isolated writable clone on the `tracking-health-v1` branch, based on GitHub `main` commit `0b18a0e`.
 - The validation-sprint roadmap and this status snapshot are committed separately from the implementation.
 
 ## Environments
@@ -52,4 +53,4 @@ Current snapshot as of 2026-10-28.
 | Staging | `vysta-staging` | `vysta-staging` | `https://vysta-staging.vysta.workers.dev` |
 | Production | `vysta-production` | `vysta-production` | `https://vysta-production.vysta.workers.dev` |
 
-Staging Worker version: `7e46be43-058c-4234-8224-1aba1b085785`.
+Staging Worker version: `b4f5f77f-a830-4ca4-b1c0-ae6cc2bd2f35`.
