@@ -159,6 +159,9 @@ export function Dashboard({ siteId }: { siteId: string }) {
 
         <p className="mt-8 text-center text-xs text-stone-400">
           Times in {site.timezone} · Revenue in {site.currency} ·{' '}
+          <button className="underline-offset-2 hover:underline" onClick={() => navigate(`/site/${site.id}/performance`)}>
+            Performance
+          </button>{' '}·{' '}
           <button className="underline-offset-2 hover:underline" onClick={() => navigate(`/site/${site.id}/settings`)}>
             Settings & install
           </button>

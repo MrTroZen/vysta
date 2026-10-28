@@ -305,11 +305,14 @@ describe('reporting semantics characterization', () => {
         expect(statements[0].sql).toContain('s.pageviews <= 1 AND s.goals = 0');
         expect(statements[2].sql).toContain("e.type = 'pageview'");
         expect(statements[2].sql).toContain('e.ts >= ?');
+        expect(statements[4].sql).toContain("e.type = 'goal'");
         return [
           [{ sessions: 3, bounces: 2, avg_duration: 10_000.4 }],
           [{ sessions: 1, bounces: 1, avg_duration: 0 }],
           [{ visitors: 2, pageviews: 7 }],
           [{ visitors: 1, pageviews: 1 }],
+          [{ actions: 4 }],
+          [{ actions: 1 }],
           [{ revenue: 12_500, customers: 1, payments: 2 }],
           [{ revenue: 0, customers: 0, payments: 0 }],
           [{ n: 2 }],
@@ -326,6 +329,7 @@ describe('reporting semantics characterization', () => {
       visitors: 2,
       sessions: 3,
       pageviews: 7,
+      actions: 4,
       bounceRate: 2 / 3,
       avgDuration: 10_000,
       revenue: 12_500,

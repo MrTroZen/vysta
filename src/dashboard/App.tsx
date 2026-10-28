@@ -5,6 +5,7 @@ import { Dashboard } from './pages/Dashboard';
 import { Landing } from './pages/Landing';
 import { Legal } from './pages/Legal';
 import { Login } from './pages/Login';
+import { Performance } from './pages/Performance';
 import { Settings } from './pages/Settings';
 import { Sites } from './pages/Sites';
 
@@ -62,8 +63,9 @@ export function App() {
     page = <Billing />;
   } else {
     const settings = /^\/site\/([\w-]+)\/settings\/?$/.exec(path);
+    const performance = /^\/site\/([\w-]+)\/performance\/?$/.exec(path);
     const site = /^\/site\/([\w-]+)\/?$/.exec(path);
-    page = settings ? <Settings siteId={settings[1]} /> : site ? <Dashboard siteId={site[1]} /> : <Sites />;
+    page = settings ? <Settings siteId={settings[1]} /> : performance ? <Performance siteId={performance[1]} /> : site ? <Dashboard siteId={site[1]} /> : <Sites />;
   }
   return <MeContext.Provider value={{ me, refresh }}>{page}</MeContext.Provider>;
 }

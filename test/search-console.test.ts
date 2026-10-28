@@ -209,7 +209,7 @@ describe('Search Console routes and isolation', () => {
         `https://analytics.example/api/integrations/search-console/oauth/callback?code=code-1&state=${authorization.searchParams.get('state')}`,
         { headers: { cookie: `${auth}; ${oauthCookie}` } }, env(db),
       );
-      expect(callback.headers.get('location')).toBe('/?integration=search-console&status=connected');
+      expect(callback.headers.get('location')).toBe('/site/site-a/settings?integration=search-console&status=connected');
       const stored = sqlite.prepare('SELECT * FROM search_console_connections WHERE site_id = ?').get('site-a') as any;
       expect(stored.access_token_encrypted).not.toContain('callback-access');
       expect(await decryptSearchConsoleToken(key, 'site-a', 'refresh', stored.refresh_token_encrypted)).toBe('callback-refresh');

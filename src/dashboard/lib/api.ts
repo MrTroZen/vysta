@@ -2,6 +2,7 @@ export class ApiError extends Error {
   constructor(
     public status: number,
     message: string,
+    public code?: string,
   ) {
     super(message);
   }
@@ -18,7 +19,7 @@ export async function api<T = any>(path: string, init?: RequestInit & { json?: u
   if (res.status === 401 && !path.startsWith('/api/auth')) {
     window.dispatchEvent(new Event('ml:logout'));
   }
-  if (!res.ok) throw new ApiError(res.status, data.error ?? res.statusText);
+  if (!res.ok) throw new ApiError(res.status, data.message ?? data.error ?? res.statusText, data.error);
   return data as T;
 }
 
@@ -40,6 +41,7 @@ export interface Kpis {
   visitors: number;
   sessions: number;
   pageviews: number;
+  actions: number;
   bounceRate: number;
   avgDuration: number;
   revenue: number;

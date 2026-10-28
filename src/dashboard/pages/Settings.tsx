@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { navigate } from '../App';
 import { Favicon } from '../components/Icons';
+import { SearchConsoleSettings } from '../components/SearchConsoleSettings';
 import { TrackingHealth } from '../components/TrackingHealth';
 import { buildAiPrompt } from '../lib/aiPrompt';
 import { api, type Site } from '../lib/api';
@@ -73,16 +74,19 @@ export function Settings({ siteId }: { siteId: string }) {
 
   return (
     <div className="mx-auto max-w-3xl space-y-5 px-4 py-8 sm:py-12">
-      <div className="flex items-center justify-between">
-        <button className="btn" onClick={() => navigate(`/site/${site.id}`)}>
-          ← Dashboard
-        </button>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex gap-2">
+          <button className="btn" onClick={() => navigate(`/site/${site.id}`)}>← Dashboard</button>
+          <button className="btn" onClick={() => navigate(`/site/${site.id}/performance`)}>Performance</button>
+        </div>
         <h1 className="flex items-center gap-2 font-semibold">
           <Favicon domain={site.domain} size={22} /> {site.name}
         </h1>
       </div>
 
       <TrackingHealth siteId={site.id} />
+
+      <SearchConsoleSettings siteId={site.id} />
 
       <AiSetup site={site} origin={origin} />
 

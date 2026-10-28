@@ -98,6 +98,15 @@ function pageviewsWhere(ctx: Ctx, from = ctx.range.from, to = ctx.range.to) {
   };
 }
 
+/** Goal/action activity in the period; filters keep the same session-scoped semantics as the rest of reporting. */
+function actionsWhere(ctx: Ctx, from = ctx.range.from, to = ctx.range.to) {
+  const f = filterSql(ctx.filters);
+  return {
+    sql: `e.site_id = ? AND e.type = 'goal' AND e.ts >= ? AND e.ts < ?${f.sql}`,
+    params: [ctx.site.id, from, to, ...f.params],
+  };
+}
+
 /** Payments in the period; with filters, only those credited to a matching visit. */
 function paymentsFrom(ctx: Ctx, from = ctx.range.from, to = ctx.range.to) {
   if (!hasFilters(ctx.filters)) {
@@ -142,12 +151,16 @@ interface RevRow {
   customers: number;
   payments: number;
 }
+interface ActionKpiRow {
+  actions: number;
+}
 
-function kpis(s: SessionKpiRow, t: TrafficKpiRow, r: RevRow) {
+function kpis(s: SessionKpiRow, t: TrafficKpiRow, r: RevRow, a: ActionKpiRow) {
   return {
     visitors: t.visitors,
     sessions: s.sessions,
     pageviews: t.pageviews,
+    actions: a.actions,
     bounceRate: s.sessions ? s.bounces / s.sessions : 0,
     avgDuration: Math.round(s.avg_duration),
     revenue: r.revenue,
@@ -166,17 +179,25 @@ export async function overview(ctx: Ctx) {
   const prevSessions = sessionsWhere(ctx, prevFrom, range.from);
   const curTraffic = pageviewsWhere(ctx);
   const prevTraffic = pageviewsWhere(ctx, prevFrom, range.from);
+  const curActions = actionsWhere(ctx);
+  const prevActions = actionsWhere(ctx, prevFrom, range.from);
   const curPay = paymentsFrom(ctx);
   const prevPay = paymentsFrom(ctx, prevFrom, range.from);
   const eb = bucketSql('e.ts', range.granularity, timezoneOffsetSql('e.ts', site.timezone, range.from, range.to));
   const pb = bucketSql('p.ts', range.granularity, timezoneOffsetSql('p.ts', site.timezone, range.from, range.to));
   const now = Date.now();
 
-  const [s1, s0, t1, t0, r1, r0, online, ts, tr] = await db.batch([
+  const [s1, s0, t1, t0, a1, a0, r1, r0, online, ts, tr] = await db.batch([
     db.prepare(SESSION_KPI_SQL(curSessions.sql)).bind(...curSessions.params),
     db.prepare(SESSION_KPI_SQL(prevSessions.sql)).bind(...prevSessions.params),
     db.prepare(TRAFFIC_KPI_SQL(curTraffic.sql)).bind(...curTraffic.params),
     db.prepare(TRAFFIC_KPI_SQL(prevTraffic.sql)).bind(...prevTraffic.params),
+    db
+      .prepare(`SELECT COUNT(*) AS actions FROM events e JOIN sessions s ON s.site_id = e.site_id AND s.id = e.session_id WHERE ${curActions.sql}`)
+      .bind(...curActions.params),
+    db
+      .prepare(`SELECT COUNT(*) AS actions FROM events e JOIN sessions s ON s.site_id = e.site_id AND s.id = e.session_id WHERE ${prevActions.sql}`)
+      .bind(...prevActions.params),
     db.prepare(REVENUE_SQL(curPay.sql)).bind(...curPay.params),
     db.prepare(REVENUE_SQL(prevPay.sql)).bind(...prevPay.params),
     db
@@ -212,8 +233,8 @@ export async function overview(ctx: Ctx) {
     range,
     currency: site.currency,
     decimals: currencyDecimals(site.currency),
-    current: kpis(s1.results[0] as SessionKpiRow, t1.results[0] as TrafficKpiRow, r1.results[0] as RevRow),
-    previous: kpis(s0.results[0] as SessionKpiRow, t0.results[0] as TrafficKpiRow, r0.results[0] as RevRow),
+    current: kpis(s1.results[0] as SessionKpiRow, t1.results[0] as TrafficKpiRow, r1.results[0] as RevRow, a1.results[0] as ActionKpiRow),
+    previous: kpis(s0.results[0] as SessionKpiRow, t0.results[0] as TrafficKpiRow, r0.results[0] as RevRow, a0.results[0] as ActionKpiRow),
     online: (online.results[0] as { n: number }).n,
     series,
   };

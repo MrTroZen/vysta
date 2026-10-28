@@ -488,7 +488,10 @@ export async function searchConsoleOauthStart(c: Context<AppEnv>) {
 }
 
 export async function searchConsoleOauthCallback(c: Context<AppEnv>) {
-  const finish = (status: 'connected' | 'failed') => c.redirect(`/?integration=search-console&status=${status}`);
+  let returnSiteId: string | null = null;
+  const finish = (status: 'connected' | 'failed') => c.redirect(
+    returnSiteId ? `/site/${returnSiteId}/settings?integration=search-console&status=${status}` : `/?integration=search-console&status=${status}`,
+  );
   const cookie = getCookie(c, OAUTH_COOKIE);
   deleteCookie(c, OAUTH_COOKIE, { path: '/api/integrations/search-console/oauth/callback' });
   try {
@@ -498,6 +501,7 @@ export async function searchConsoleOauthCallback(c: Context<AppEnv>) {
     const user = await currentUser(c);
     if (!user) return finish('failed');
     const state = await verifySearchConsoleState(c.env.SESSION_SECRET, cookie, c.req.query('state'), user.id);
+    returnSiteId = state?.siteId ?? null;
     const code = c.req.query('code');
     if (!state || !code || c.req.query('error')) return finish('failed');
     const access = siteAccessSql(c.env, user);
