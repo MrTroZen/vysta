@@ -11,6 +11,7 @@ Current snapshot as of 2026-10-28.
 
 ## Verification
 
+- No-Code Outcome Goals v1 passed `npm run verify`: 149 tests across 14 test files, typecheck, and the production dashboard build. Focused outcome/action/SPA/reporting verification covered 79 tests across ten files. Rendered browser QA remains pending because browser access was unavailable and this worktree has no Playwright installation.
 - What Changed Insights v1 passed `npm run verify`: 143 tests across 13 test files, typecheck, and the production dashboard build. Focused insight/reporting verification covered 29 tests across four files without Google credentials or external calls. Rendered browser QA remains pending because this worktree has no Playwright setup and the Browser plugin was unavailable.
 - The reconciled Performance v1 and Lead & Action Tracking v1 branch passed `npm run verify`: 130 tests across 12 test files, typecheck, and the production dashboard build. Tracker, ingestion, server-goal, reporting-time, Search Console composition, and stable action-model coverage use local mocks and fixtures; no customer site or external service is required.
 - Performance v1 passed `npm run verify`: 120 tests across 10 test files, typecheck, and the production dashboard build. Performance/Search Console composition uses mocked API responses; no real Google credentials or calls are required.
@@ -24,7 +25,7 @@ Current snapshot as of 2026-10-28.
 
 ## Current development
 
-- Active phase: deterministic What Changed Insights v1 is implemented and verified locally on top of Performance v1.
+- Active phase: No-Code Outcome Goals v1 is implemented and verified locally on top of Insights v1.
 - The prior P1 Reliability & Trust sequence is deferred, not removed.
 - Tracking Health v1 implementation, migration, Settings UI, and tests are reconciled on top of the production P0 history in `3d188c8` (`feat: add tracking health v1`), with the scheduler/Hono export compatibility fix in `8b66842`.
 - Migration `0008_tracking_health.sql` is applied on staging. The hourly retention cron is deployed at `17 * * * *`.
@@ -35,6 +36,14 @@ Current snapshot as of 2026-10-28.
 - Performance now requests the same source, page, action, and action-page breakdowns for the automatic previous period through `compare=previous`.
 - A standalone deterministic rule layer applies absolute, percentage, and minimum-volume thresholds; ranks candidates; caps category repetition; and returns at most four owner-facing observations.
 - The compact What changed panel covers material traffic and action movement, contact intent, source/page movement, leading action pages, loading, and neutral no-insight states. Optional typed Search Console inputs require no live Google credentials.
+
+## No-Code Outcome Goals v1 implementation
+
+- Site Settings supports owner-named exact-path and segment-aware starts-with rules, including create, edit, pause/enable, and soft delete.
+- Accepted page views match only normalized paths. Query strings and fragments are excluded, and a site/session/rule receipt limits each outcome to once per visit across SPA revisits and tracker reinitialization.
+- Outcomes reuse goal events under server-reserved internal names, while browser and server goal APIs reject attempts to forge those names. Existing custom goals and automatic intent actions remain compatible.
+- Performance reports confirmed-outcome totals with automatic previous-period comparison plus outcome-name and outcome-page breakdowns, separately from contact intent and other configured actions.
+- Migration `0010_outcome_goals.sql` stores site-scoped rules and deduplication receipts; site deletion removes both tables' rows while soft-deleted rules retain historical report labels.
 
 ## Search Console v1 implementation
 
@@ -57,6 +66,7 @@ Current snapshot as of 2026-10-28.
 
 - Performance v1 and Lead & Action Tracking v1 are reconciled on the isolated `performance-v1` branch based on Search Console v1 commit `255091e`.
 - Insights v1 is implemented on the focused `insights-v1` branch from Performance v1 commit `052c790`.
+- Outcome Goals v1 is implemented on `outcome-goals-v1` from Insights v1 commit `545e2ca`.
 - The branch is not merged to `main`; no staging or production deployment was performed.
 
 ## Remaining product gaps

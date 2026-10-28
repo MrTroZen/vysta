@@ -42,6 +42,7 @@ export interface Kpis {
   sessions: number;
   pageviews: number;
   actions: number;
+  outcomes: number;
   bounceRate: number;
   avgDuration: number;
   revenue: number;

@@ -9,6 +9,7 @@ import { handleDodoWebhook, handleGoalApi, handlePaymentApi, rematchPayments } f
 import { isAllowedOrigin, SECURITY_HEADERS } from './lib/security';
 import { breakdown, customers, funnel, makeCtx, overview, realtime, visitorProfile, visitors, type FunnelStep } from './stats';
 import { getTrackingHealth, pruneTrackingHealth } from './trackingHealth';
+import { listOutcomeGoals, OutcomeGoalValidationError, validateOutcomeGoal, type OutcomeGoalInput } from './outcomeGoals';
 import {
   searchConsoleDisconnect,
   searchConsoleOauthCallback,
@@ -244,6 +245,73 @@ app.post('/api/sites/:id/rotate-key', async (c) => {
 
 app.get('/api/sites/:id/tracking-health', async (c) => c.json(await getTrackingHealth(c.env.DB, c.get('site').id)));
 
+// ---------- No-code confirmed outcomes
+
+app.get('/api/sites/:id/outcome-goals', async (c) =>
+  c.json({ goals: await listOutcomeGoals(c.env.DB, c.get('site').id) }),
+);
+
+app.post('/api/sites/:id/outcome-goals', async (c) => {
+  const siteId = c.get('site').id;
+  const body = await c.req.json<OutcomeGoalInput>().catch(() => null);
+  if (!body || Array.isArray(body) || typeof body !== 'object') return c.json({ error: 'Enter a valid outcome goal.' }, 400);
+  try {
+    const goal = validateOutcomeGoal(body);
+    const count = await c.env.DB.prepare(
+      'SELECT COUNT(*) AS n FROM outcome_goal_rules WHERE site_id = ? AND deleted_at IS NULL',
+    ).bind(siteId).first<{ n: number }>();
+    if ((count?.n ?? 0) >= 50) return c.json({ error: 'This website already has the maximum of 50 outcome goals.' }, 400);
+    const id = randomId(8);
+    const now = Date.now();
+    await c.env.DB.prepare(
+      `INSERT INTO outcome_goal_rules (site_id, id, name, match_type, path, enabled, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(siteId, id, goal.name, goal.matchType, goal.path, goal.enabled ? 1 : 0, now, now).run();
+    return c.json({ goal: { id, ...goal, createdAt: now, updatedAt: now } }, 201);
+  } catch (error) {
+    if (error instanceof OutcomeGoalValidationError) return c.json({ error: error.message }, 400);
+    if (String(error).includes('UNIQUE')) return c.json({ error: 'A goal already uses that path and matching option.' }, 409);
+    throw error;
+  }
+});
+
+app.put('/api/sites/:id/outcome-goals/:goalId', async (c) => {
+  const siteId = c.get('site').id;
+  const current = (await listOutcomeGoals(c.env.DB, siteId)).find((goal) => goal.id === c.req.param('goalId'));
+  if (!current) return c.json({ error: 'Outcome goal not found.' }, 404);
+  const body = await c.req.json<OutcomeGoalInput>().catch(() => null);
+  if (!body || Array.isArray(body) || typeof body !== 'object' || !Object.keys(body).some((key) => ['name', 'matchType', 'path', 'enabled'].includes(key))) {
+    return c.json({ error: 'Enter a valid outcome goal change.' }, 400);
+  }
+  try {
+    const goal = validateOutcomeGoal(body, current);
+    const now = Date.now();
+    await c.env.DB.prepare(
+      `UPDATE outcome_goal_rules SET name = ?, match_type = ?, path = ?, enabled = ?, updated_at = ?
+       WHERE site_id = ? AND id = ? AND deleted_at IS NULL`,
+    ).bind(goal.name, goal.matchType, goal.path, goal.enabled ? 1 : 0, now, siteId, current.id).run();
+    return c.json({ goal: { ...current, ...goal, updatedAt: now } });
+  } catch (error) {
+    if (error instanceof OutcomeGoalValidationError) return c.json({ error: error.message }, 400);
+    if (String(error).includes('UNIQUE')) return c.json({ error: 'A goal already uses that path and matching option.' }, 409);
+    throw error;
+  }
+});
+
+app.delete('/api/sites/:id/outcome-goals/:goalId', async (c) => {
+  const siteId = c.get('site').id;
+  const goalId = c.req.param('goalId');
+  const existing = await c.env.DB.prepare(
+    'SELECT id FROM outcome_goal_rules WHERE site_id = ? AND id = ? AND deleted_at IS NULL',
+  ).bind(siteId, goalId).first<{ id: string }>();
+  if (!existing) return c.json({ error: 'Outcome goal not found.' }, 404);
+  const now = Date.now();
+  await c.env.DB.prepare(
+    'UPDATE outcome_goal_rules SET enabled = 0, deleted_at = ?, updated_at = ? WHERE site_id = ? AND id = ?',
+  ).bind(now, now, siteId, goalId).run();
+  return c.json({ ok: true });
+});
+
 // ---------- Google Search Console (server-side integration only)
 
 app.get('/api/sites/:id/integrations/search-console/status', searchConsoleStatus);
@@ -265,6 +333,8 @@ const SITE_DATA_TABLES = [
   'tracking_health_hourly',
   'site_tracking_health',
   'search_console_connections',
+  'outcome_goal_receipts',
+  'outcome_goal_rules',
 ] as const;
 
 export async function deleteSiteData(db: D1Database, id: string) {

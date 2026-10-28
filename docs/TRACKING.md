@@ -56,6 +56,12 @@ Embed the lightweight (9 KB / 3.5 KB gzipped), dependency-free tracking script i
 
 Automatic contact/form actions are intent signals. They do not prove that a call connected, a message was delivered, a form was accepted by the server, or a lead became a customer.
 
+### No-code confirmed outcomes
+
+In Site Settings, an owner can give a success-page path an owner-friendly outcome name, such as `/thank-you` → “Lead submitted.” Rules can match one exact normalized path or a path and its child segments. Matching uses no domain, query-string value, fragment, form field, or page content.
+
+An enabled rule records its confirmed outcome once per visit when Vysta accepts a matching page view, including History API SPA navigation. Paused rules do not fire. These configured outcomes are reported separately from automatic contact/form intent and other custom actions. Internal names beginning with `__vysta_outcome_` are reserved and are rejected by browser and server goal ingestion.
+
 ### Custom Actions and Confirmed Outcomes
 Track site-specific interactions using HTML data attributes or the JavaScript API. Use the server API for confirmed backend outcomes:
 
@@ -100,7 +106,7 @@ Recent counters use UTC hourly aggregates. Vysta keeps 30 days (720 hourly bucke
 
 ## 5. Event Naming Conventions
 
-Configured action names should use **`lower_snake_case`** for consistent dashboard reporting and funnel aggregation. Names beginning with `__vysta_` are reserved for automatic actions.
+Configured action names should use **`lower_snake_case`** for consistent dashboard reporting and funnel aggregation. Names beginning with `__vysta_` are reserved by Vysta for automatic intent and configured outcome events.
 
 | Goal Name | Trigger / Context |
 | :--- | :--- |

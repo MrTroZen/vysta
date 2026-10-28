@@ -1,5 +1,6 @@
 import type { Context } from 'hono';
 import { isAutomaticActionName } from '../shared/actions';
+import { isOutcomeEventName } from '../shared/outcomeGoals';
 import { getSite, type AppEnv, type Site } from './env';
 import { verifyStandardWebhook } from './lib/crypto';
 import { recordServerGoal, type ServerGoalWarningReason } from './trackingHealth';
@@ -405,6 +406,9 @@ export async function handleGoalApi(c: Context<AppEnv>) {
   const requestedVisitorId = str(b?.visitor_id);
   if (!name || (!requestedSessionId && !requestedVisitorId)) {
     return warning('name and either session_id or visitor_id are required', 400, 'invalid_request', name);
+  }
+  if (isOutcomeEventName(name)) {
+    return warning('that goal name is reserved', 400, 'invalid_request', name);
   }
 
   const headerKey = idempotencyKey(c.req.header('idempotency-key'));

@@ -1,10 +1,12 @@
 import type { Context } from 'hono';
 import { classify } from '../shared/sources';
 import { isAutomaticActionName } from '../shared/actions';
+import { isOutcomeEventName } from '../shared/outcomeGoals';
 import { siteOwnerActive } from './auth';
 import { getSite, type AppEnv, type Site } from './env';
 import { isBot, parseUA } from './lib/ua';
 import { creditedSessionSql } from './payments';
+import { enabledOutcomeGoals, outcomeStatements } from './outcomeGoals';
 import { recordBrowserWarning, trackingHealthStatements } from './trackingHealth';
 
 const TYPES = new Set(['pageview', 'goal', 'outbound', 'ping', 'identify']);
@@ -290,6 +292,7 @@ export async function ingest(
   }
 
   const stmts: D1PreparedStatement[] = gate ? [startReceipt(db, site.id, t, gate, now)] : [];
+  const outcomeRules = t === 'pageview' ? await enabledOutcomeGoals(db, site.id) : [];
   if (!existing) {
     stmts.push(...newSession(db, site, body, url, path, ua, geo, now, gate));
   }
@@ -308,9 +311,10 @@ export async function ingest(
     }
     stmts.push(insertEvent(db, site.id, sid, vid, now, 'pageview', null, path, null, gate));
     stmts.push(...claimPayment(db, site.id, vid, url, now, gate));
+    stmts.push(...outcomeStatements(db, site.id, sid, vid, path, now, outcomeRules));
   } else if (t === 'goal') {
     const name = clip(body.n, 64);
-    if (!name) {
+    if (!name || isOutcomeEventName(name)) {
       await recordBrowserWarning(db, site.id, now, t, 'invalid_goal', clip(body.tv, 32));
       return;
     }

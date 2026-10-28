@@ -103,6 +103,17 @@ describe('server-side goal contract', () => {
   beforeEach(() => vi.setSystemTime(now));
   afterEach(() => vi.useRealTimers());
 
+  it('rejects internal confirmed-outcome names from the public goal API', async () => {
+    const { sqlite, db } = fixture();
+    try {
+      const response = await goal(db, site.api_key, { session_id: 'session-old', name: '__vysta_outcome_forged' });
+      expect(response.status).toBe(400);
+      expect(sqlite.prepare("SELECT COUNT(*) AS n FROM events WHERE name LIKE '__vysta_outcome_%'").get()).toEqual({ n: 0 });
+    } finally {
+      sqlite.close();
+    }
+  });
+
   it('never stores properties under reserved automatic action names', async () => {
     const { sqlite, db } = fixture();
     try {

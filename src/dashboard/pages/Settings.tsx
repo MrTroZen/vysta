@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { navigate } from '../App';
 import { Favicon } from '../components/Icons';
 import { SearchConsoleSettings } from '../components/SearchConsoleSettings';
+import { OutcomeGoalsSettings } from '../components/OutcomeGoalsSettings';
 import { TrackingHealth } from '../components/TrackingHealth';
 import { buildAiPrompt } from '../lib/aiPrompt';
 import { api, type Site } from '../lib/api';
@@ -87,6 +88,8 @@ export function Settings({ siteId }: { siteId: string }) {
       <TrackingHealth siteId={site.id} />
 
       <SearchConsoleSettings siteId={site.id} />
+
+      <OutcomeGoalsSettings siteId={site.id} />
 
       <AiSetup site={site} origin={origin} />
 

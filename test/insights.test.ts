@@ -9,6 +9,7 @@ function kpis(overrides: Partial<Kpis> = {}): Kpis {
     sessions: 0,
     pageviews: 0,
     actions: 0,
+    outcomes: 0,
     bounceRate: 0,
     avgDuration: 0,
     revenue: 0,

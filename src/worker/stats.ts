@@ -1,4 +1,5 @@
 import type { Context } from 'hono';
+import { OUTCOME_GOAL_PREFIX } from '../shared/outcomeGoals';
 import type { AppEnv, Site } from './env';
 import { bucketLabels, bucketSql, previousPeriodStart, resolveRange, timezoneOffsetSql, type Range } from './lib/time';
 import { currencyDecimals } from './payments';
@@ -109,7 +110,15 @@ function pageviewsWhere(ctx: Ctx, from = ctx.range.from, to = ctx.range.to) {
 function actionsWhere(ctx: Ctx, from = ctx.range.from, to = ctx.range.to) {
   const f = filterSql(ctx.filters);
   return {
-    sql: `e.site_id = ? AND e.type = 'goal' AND e.ts >= ? AND e.ts < ?${f.sql}`,
+    sql: `e.site_id = ? AND e.type = 'goal' AND substr(COALESCE(e.name, ''), 1, ${OUTCOME_GOAL_PREFIX.length}) <> '${OUTCOME_GOAL_PREFIX}' AND e.ts >= ? AND e.ts < ?${f.sql}`,
+    params: [ctx.site.id, from, to, ...f.params],
+  };
+}
+
+function outcomesWhere(ctx: Ctx, from = ctx.range.from, to = ctx.range.to) {
+  const f = filterSql(ctx.filters);
+  return {
+    sql: `e.site_id = ? AND e.type = 'goal' AND substr(COALESCE(e.name, ''), 1, ${OUTCOME_GOAL_PREFIX.length}) = '${OUTCOME_GOAL_PREFIX}' AND e.ts >= ? AND e.ts < ?${f.sql}`,
     params: [ctx.site.id, from, to, ...f.params],
   };
 }
@@ -161,13 +170,17 @@ interface RevRow {
 interface ActionKpiRow {
   actions: number;
 }
+interface OutcomeKpiRow {
+  outcomes: number;
+}
 
-function kpis(s: SessionKpiRow, t: TrafficKpiRow, r: RevRow, a: ActionKpiRow) {
+function kpis(s: SessionKpiRow, t: TrafficKpiRow, r: RevRow, a: ActionKpiRow, o: OutcomeKpiRow) {
   return {
     visitors: t.visitors,
     sessions: s.sessions,
     pageviews: t.pageviews,
     actions: a.actions,
+    outcomes: o.outcomes,
     bounceRate: s.sessions ? s.bounces / s.sessions : 0,
     avgDuration: Math.round(s.avg_duration),
     revenue: r.revenue,
@@ -188,13 +201,15 @@ export async function overview(ctx: Ctx) {
   const prevTraffic = pageviewsWhere(ctx, prevFrom, range.from);
   const curActions = actionsWhere(ctx);
   const prevActions = actionsWhere(ctx, prevFrom, range.from);
+  const curOutcomes = outcomesWhere(ctx);
+  const prevOutcomes = outcomesWhere(ctx, prevFrom, range.from);
   const curPay = paymentsFrom(ctx);
   const prevPay = paymentsFrom(ctx, prevFrom, range.from);
   const eb = bucketSql('e.ts', range.granularity, timezoneOffsetSql('e.ts', site.timezone, range.from, range.to));
   const pb = bucketSql('p.ts', range.granularity, timezoneOffsetSql('p.ts', site.timezone, range.from, range.to));
   const now = Date.now();
 
-  const [s1, s0, t1, t0, a1, a0, r1, r0, online, ts, tr] = await db.batch([
+  const [s1, s0, t1, t0, a1, a0, o1, o0, r1, r0, online, ts, tr] = await db.batch([
     db.prepare(SESSION_KPI_SQL(curSessions.sql)).bind(...curSessions.params),
     db.prepare(SESSION_KPI_SQL(prevSessions.sql)).bind(...prevSessions.params),
     db.prepare(TRAFFIC_KPI_SQL(curTraffic.sql)).bind(...curTraffic.params),
@@ -205,6 +220,10 @@ export async function overview(ctx: Ctx) {
     db
       .prepare(`SELECT COUNT(*) AS actions FROM events e JOIN sessions s ON s.site_id = e.site_id AND s.id = e.session_id WHERE ${prevActions.sql}`)
       .bind(...prevActions.params),
+    db.prepare(`SELECT COUNT(*) AS outcomes FROM events e JOIN sessions s ON s.site_id = e.site_id AND s.id = e.session_id WHERE ${curOutcomes.sql}`)
+      .bind(...curOutcomes.params),
+    db.prepare(`SELECT COUNT(*) AS outcomes FROM events e JOIN sessions s ON s.site_id = e.site_id AND s.id = e.session_id WHERE ${prevOutcomes.sql}`)
+      .bind(...prevOutcomes.params),
     db.prepare(REVENUE_SQL(curPay.sql)).bind(...curPay.params),
     db.prepare(REVENUE_SQL(prevPay.sql)).bind(...prevPay.params),
     db
@@ -240,8 +259,8 @@ export async function overview(ctx: Ctx) {
     range,
     currency: site.currency,
     decimals: currencyDecimals(site.currency),
-    current: kpis(s1.results[0] as SessionKpiRow, t1.results[0] as TrafficKpiRow, r1.results[0] as RevRow, a1.results[0] as ActionKpiRow),
-    previous: kpis(s0.results[0] as SessionKpiRow, t0.results[0] as TrafficKpiRow, r0.results[0] as RevRow, a0.results[0] as ActionKpiRow),
+    current: kpis(s1.results[0] as SessionKpiRow, t1.results[0] as TrafficKpiRow, r1.results[0] as RevRow, a1.results[0] as ActionKpiRow, o1.results[0] as OutcomeKpiRow),
+    previous: kpis(s0.results[0] as SessionKpiRow, t0.results[0] as TrafficKpiRow, r0.results[0] as RevRow, a0.results[0] as ActionKpiRow, o0.results[0] as OutcomeKpiRow),
     online: (online.results[0] as { n: number }).n,
     series,
   };
@@ -347,11 +366,32 @@ export async function breakdown(ctx: Ctx, dim: string, limit = 100): Promise<Bre
       .prepare(
         `SELECT e.name AS label, e.path AS extra, COUNT(DISTINCT e.visitor_id) AS visitors, COUNT(*) AS pageviews
          FROM events e ${join}
-         WHERE e.site_id = ? AND e.type = 'goal' AND e.ts >= ? AND e.ts < ?${f.sql}
+         WHERE e.site_id = ? AND e.type = 'goal'
+           AND substr(COALESCE(e.name, ''), 1, ${OUTCOME_GOAL_PREFIX.length}) <> '${OUTCOME_GOAL_PREFIX}'
+           AND e.ts >= ? AND e.ts < ?${f.sql}
          GROUP BY e.name, e.path ORDER BY visitors DESC, pageviews DESC, e.name ASC, e.path ASC LIMIT ${lim}`,
       )
       .bind(ctx.site.id, ctx.range.from, ctx.range.to, ...f.params)
       .all<{ label: string | null; extra: string | null; visitors: number; pageviews: number }>();
+    return rows.results.map((row) => ({ ...row, revenue: 0, customers: 0 }));
+  }
+
+  if (dim === 'outcome' || dim === 'outcome_page') {
+    const f = filterSql(ctx.filters);
+    const sessionJoin = hasFilters(ctx.filters) ? 'JOIN sessions s ON s.site_id = e.site_id AND s.id = e.session_id' : '';
+    const pageColumn = dim === 'outcome_page' ? ', e.path AS extra' : '';
+    const pageGroup = dim === 'outcome_page' ? ', e.path' : '';
+    const rows = await db.prepare(
+      `SELECT r.name AS label${pageColumn}, COUNT(DISTINCT e.visitor_id) AS visitors, COUNT(*) AS pageviews
+       FROM events e
+       JOIN outcome_goal_rules r ON r.site_id = e.site_id AND e.name = '${OUTCOME_GOAL_PREFIX}' || r.id
+       ${sessionJoin}
+       WHERE e.site_id = ? AND e.type = 'goal' AND e.ts >= ? AND e.ts < ?${f.sql}
+       GROUP BY r.id, r.name${pageGroup}
+       ORDER BY visitors DESC, pageviews DESC, r.name ASC${pageGroup} LIMIT ${lim}`,
+    ).bind(ctx.site.id, ctx.range.from, ctx.range.to, ...f.params).all<{
+      label: string; extra?: string | null; visitors: number; pageviews: number;
+    }>();
     return rows.results.map((row) => ({ ...row, revenue: 0, customers: 0 }));
   }
 
@@ -360,7 +400,10 @@ export async function breakdown(ctx: Ctx, dim: string, limit = 100): Promise<Bre
     const f = filterSql(ctx.filters);
     const join = hasFilters(ctx.filters) ? 'JOIN sessions s ON s.site_id = e.site_id AND s.id = e.session_id' : '';
     const params = [ctx.site.id, type, ctx.range.from, ctx.range.to, ...f.params];
-    const base = `FROM events e ${join} WHERE e.site_id = ? AND e.type = ? AND e.ts >= ? AND e.ts < ?${f.sql}`;
+    const outcomeExclusion = dim === 'goal'
+      ? ` AND substr(COALESCE(e.name, ''), 1, ${OUTCOME_GOAL_PREFIX.length}) <> '${OUTCOME_GOAL_PREFIX}'`
+      : '';
+    const base = `FROM events e ${join} WHERE e.site_id = ? AND e.type = ?${outcomeExclusion} AND e.ts >= ? AND e.ts < ?${f.sql}`;
     const [v, r] = await db.batch([
       db
         .prepare(

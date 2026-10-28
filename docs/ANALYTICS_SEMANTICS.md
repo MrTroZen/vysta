@@ -232,7 +232,7 @@ Status: current behavior characterization, 2026-10-28. This document describes t
 
 The tracker also emits four reserved automatic action names: `__vysta_phone_intent` for `tel:` clicks, `__vysta_whatsapp_intent` for `whatsapp:`, `wa.me`, or `*.whatsapp.com` clicks, `__vysta_email_intent` for `mailto:` clicks, and `__vysta_form_intent` for native HTML `submit` events. These names mean visitor intent only, not a confirmed call, delivered message, accepted lead, or business outcome. The singleton owns one set of delegated listeners, so SPA DOM replacements need no re-binding. A per-element one-second guard suppresses rapid duplicate automatic delivery.
 
-**Ingestion behavior.** Browser ingestion trims/clips the name to 64, increments `sessions.goals`, updates `last_seen_at`, and inserts a goal event with current normalized path. Object/array properties are JSON-stringified and then sliced to 1,000 characters; this can store invalid truncated JSON. Reserved automatic actions always discard properties at browser and server-goal ingestion. A goal can create a session.
+**Ingestion behavior.** Browser ingestion trims/clips the name to 64, increments `sessions.goals`, updates `last_seen_at`, and inserts a goal event with current normalized path. Object/array properties are JSON-stringified and then sliced to 1,000 characters; this can store invalid truncated JSON. Reserved automatic actions always discard properties at browser and server-goal ingestion. Internal `__vysta_outcome_` names are rejected from browser and server goal APIs. A goal can create a session.
 
 **Server-side behavior.** `POST /api/v1/goals` authenticates by site API key and requires `name` plus either `session_id` or `visitor_id`. A supplied `session_id` selects that exact site session and supplies its visitor identity; if `visitor_id` is also supplied, it must match. Without `session_id`, the endpoint preserves the legacy behavior of selecting the visitor's latest session. Both paths require `last_seen_at` within 30 days. `properties` is canonical and legacy `props` remains accepted; when both exist, `properties` wins. A body `idempotency_key` or `Idempotency-Key` header creates a site-scoped durable receipt, atomically gates the session counter and goal event, and returns `duplicate: true` on a same-request retry. Reusing a key for another request returns 409. Requests without a key remain accepted but unprotected for backward compatibility.
 
@@ -242,7 +242,17 @@ The tracker also emits four reserved automatic action names: `__vysta_phone_inte
 
 **Test protection.** Declarative/API/queued goals, rapid duplicates, duplicate inclusion, ingestion, malformed empty names, properties, and smoke dashboard/funnel behavior are covered. Server-goal tests cover exact and fallback session selection, ownership, recency, `properties`/`props`, concurrent retry, key conflicts, site scoping, and legacy unprotected requests.
 
-### 24. Funnel progression
+### 24. Configured page outcome
+
+**Configuration/matching behavior.** Each rule is owned by one site and contains an owner-facing name, enabled state, normalized path, and either exact or starts-with matching. Starts-with matching is segment-aware: `/signup` matches `/signup` and `/signup/success`, not `/signup-old`. Rules reject domains, query strings, fragments, backslashes, control characters, and paths over 300 characters.
+
+**Ingestion behavior.** After an accepted page view, the server evaluates enabled rules for that site against the already normalized `URL.pathname`. A site/session/rule receipt gates the generated goal event and session goal counter, so repeated page views, SPA revisits, event retries, and repeated tracker initialization record at most one completion per rule per visit. The generated event stores the normalized page path and no properties.
+
+**SQL/reporting behavior.** Internal event names are stable rule-ID references. Reporting joins them back to retained rule labels and returns current/previous confirmed-outcome totals plus outcome and outcome-page breakdowns. Generic action totals and breakdowns explicitly exclude these events, keeping intent/actions separate from configured confirmed outcomes. Soft deletion stops future matches but preserves historical labels.
+
+**Known limitations.** A page arrival is evidence that the visitor reached the configured success route, not independent backend verification. A rule fires once per visit even if multiple genuine completions occur in that visit. Client-side routers that do not emit the existing History API pageview signal are not observed.
+
+### 25. Funnel progression
 
 **Tracker behavior.** Funnels consume existing pageview/goal events; no special funnel event is sent.
 
@@ -254,7 +264,7 @@ The tracker also emits four reserved automatic action names: `__vysta_phone_inte
 
 **Test protection.** Ordered progression, out-of-order handling, wildcard matching, cross-session visitor identity, and smoke end-to-end behavior are covered. Same-timestamp and 100,000-cap behavior remain untested.
 
-### 25. Conversion rate
+### 26. Conversion rate
 
 Vysta currently uses more than one conversion rate:
 

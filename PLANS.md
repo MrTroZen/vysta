@@ -11,17 +11,17 @@ Build Vysta into a trustworthy, privacy-focused analytics platform that gives sm
 
 ## Current phase
 
-What Changed Insights v1 — deterministic implementation completed and verified locally on top of Performance v1
+No-Code Outcome Goals v1 — URL/path-based confirmed outcomes on top of Insights v1
 
 ## Objective and boundaries
 
-Surface a small number of meaningful current-versus-previous-period changes without requiring owners to interpret analytics tables.
+Let owners define confirmed outcomes from success-page paths without adding site-specific JavaScript.
 
-- Use deterministic, separately tested rules over existing Performance totals and breakdowns.
-- Require both meaningful absolute volume and percentage movement; suppress tiny samples and zero-to-small noise.
-- Rank traffic, action/intent, source, page, and action-page observations and show at most four.
-- Keep intent signals distinct from confirmed outcomes and provide a neutral no-change state.
-- Do not add AI/LLMs, scheduled reports, exports, GA4, customer-specific rules, deferred reliability work, Google configuration, or deployment work.
+- Reuse goal events with site-scoped exact and segment-aware starts-with path rules.
+- Keep query strings, fragments, form data, and destination/contact details out of rule matching.
+- Count each configured outcome once per visit and report it separately from intent/actions.
+- Provide Settings create/edit/pause/delete controls and Performance totals, names, pages, and previous-period comparison.
+- Do not add click-rule builders, CRM/revenue attribution, funnels, AI, GA4, customer-specific rules, Google configuration, or deployment work.
 
 ## Search Console v1 reference architecture
 

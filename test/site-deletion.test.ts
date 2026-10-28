@@ -51,6 +51,8 @@ const siteTables = [
   'payment_claims',
   'ingestion_receipts',
   'server_goal_receipts',
+  'outcome_goal_receipts',
+  'outcome_goal_rules',
 ] as const;
 
 function seedSite(sqlite: DatabaseSync, siteId: string, suffix: string) {
@@ -94,6 +96,19 @@ function seedSite(sqlite: DatabaseSync, siteId: string, suffix: string) {
        VALUES (?, ?, ?, ?, ?, ?, 'signup', ?, ?)`,
     )
     .run(siteId, `goal-${suffix}`, `hash-${suffix}`, `goal-token-${suffix}`, sessionId, visitorId, now, now);
+  sqlite
+    .prepare(
+      `INSERT INTO outcome_goal_rules
+       (site_id, id, name, match_type, path, enabled, created_at, updated_at)
+       VALUES (?, ?, 'Lead submitted', 'exact', '/thank-you', 1, ?, ?)`,
+    )
+    .run(siteId, `outcome-${suffix}`, now, now);
+  sqlite
+    .prepare(
+      `INSERT INTO outcome_goal_receipts
+       (site_id, session_id, rule_id, processing_token, first_matched_at) VALUES (?, ?, ?, ?, ?)`,
+    )
+    .run(siteId, sessionId, `outcome-${suffix}`, `outcome-token-${suffix}`, now);
 }
 
 describe('site deletion', () => {
