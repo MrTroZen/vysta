@@ -129,7 +129,7 @@ export function OutcomeGoalsSettings({ siteId }: { siteId: string }) {
               <li key={goal.id} className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2"><span className="min-w-0 break-words font-medium">{goal.name}</span><span className={`shrink-0 rounded-full px-2 py-0.5 text-xs ${goal.enabled ? 'bg-emerald-50 text-emerald-700' : 'bg-stone-100 text-stone-500'}`}>{goal.enabled ? 'Active' : 'Paused'}</span></div>
-                  <p className="mt-1 truncate text-sm text-stone-500"><span className="font-medium text-stone-600">{goal.matchType === 'exact' ? 'Exactly' : 'Starts with'}</span> {goal.path}</p>
+                  <p className="mt-1 break-all text-sm text-stone-500"><span className="font-medium text-stone-600">{goal.matchType === 'exact' ? 'Exactly' : 'Starts with'}</span> {goal.path}</p>
                 </div>
                 <div className="flex shrink-0 flex-wrap gap-2">
                   <button className="btn" onClick={() => toggle(goal)}>{goal.enabled ? 'Pause' : 'Enable'}</button>

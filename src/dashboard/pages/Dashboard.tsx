@@ -49,9 +49,9 @@ export function Dashboard({ siteId }: { siteId: string }) {
     window.addEventListener('keydown', on);
     return () => window.removeEventListener('keydown', on);
   }, []);
-  const { data: sites } = useApi<Site[]>('/api/sites');
+  const { data: sites, error: sitesError, loading: sitesLoading } = useApi<Site[]>('/api/sites', reloadKey);
   const site = sites?.find((s) => s.id === siteId);
-  const { data: overview, loading } = useApi<Overview>(site ? `/api/sites/${siteId}/overview?${qs(q)}` : null, reloadKey);
+  const { data: overview, error: overviewError, loading } = useApi<Overview>(site ? `/api/sites/${siteId}/overview?${qs(q)}` : null, reloadKey);
 
   const addFilter = useCallback((key: string, value: string) => update({ filters: { ...q.filters, [key]: value } }), [q.filters, update]);
   const removeFilter = (key: string) => {
@@ -83,7 +83,28 @@ export function Dashboard({ siteId }: { siteId: string }) {
       </div>
     );
   }
+  if (sitesError) {
+    return (
+      <main className="mx-auto max-w-xl px-4 py-10">
+        <section className="card p-6" role="alert">
+          <h1 className="text-lg font-semibold">Dashboard could not be loaded</h1>
+          <p className="mt-2 text-sm text-red-700">{sitesError}</p>
+          <button className="btn mt-4" onClick={() => setReloadKey((key) => key + 1)}>Try again</button>
+        </section>
+      </main>
+    );
+  }
+  if (sitesLoading && !sites) {
+    return (
+      <main className="mx-auto max-w-[1480px] px-3 py-6 sm:px-6 lg:py-10" aria-label="Loading dashboard">
+        <div className="h-11 w-64 animate-pulse rounded-xl bg-stone-100 motion-reduce:animate-none" />
+        <div className="mt-5 h-56 animate-pulse rounded-2xl bg-stone-100 motion-reduce:animate-none" />
+      </main>
+    );
+  }
   if (!dash || !site) return null;
+
+  const noVisits = Boolean(overview && overview.current.visitors === 0 && overview.current.pageviews === 0);
 
   return (
     <DashContext.Provider value={dash}>
@@ -98,6 +119,23 @@ export function Dashboard({ siteId }: { siteId: string }) {
           onLive={() => setLive(true)}
           loading={loading}
         />
+
+        {overviewError && (
+          <div className="mt-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-900" role="alert">
+            <p>Dashboard data could not be loaded. {overviewError}</p>
+            <button className="btn mt-3" onClick={() => setReloadKey((key) => key + 1)}>Try again</button>
+          </div>
+        )}
+
+        {noVisits && !overviewError && (
+          <section className="card mt-5 flex flex-col gap-4 border-amber-200 bg-amber-50/60 p-5 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="font-semibold text-amber-950">No visits in this date range yet</h2>
+              <p className="mt-1 text-sm text-amber-900">For a new website, install the Vysta script and use Tracking Health to confirm data is arriving.</p>
+            </div>
+            <button className="btn-dark shrink-0" onClick={() => navigate(`/site/${site.id}/settings`)}>Check installation</button>
+          </section>
+        )}
 
         {Object.keys(q.filters).length > 0 && (
           <div className="mt-4 flex flex-wrap items-center gap-2">

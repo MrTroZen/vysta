@@ -23,7 +23,11 @@ export function browserHealthState(browser: TrackingHealth['browser']): HealthSt
   if (browser.lastRequestAt) {
     return { label: 'No recent data', message: 'Vysta has seen this tracker before, but no tracking requests arrived recently.', tone: 'neutral' };
   }
-  return { label: 'Waiting for data', message: 'No tracking requests have reached Vysta for this site yet.', tone: 'neutral' };
+  return {
+    label: 'Waiting for tracker',
+    message: 'No tracking requests have reached Vysta yet. Install the script, visit your website, then refresh this check.',
+    tone: 'neutral',
+  };
 }
 
 export function serverGoalHealthState(serverGoals: TrackingHealth['serverGoals']): HealthState {

@@ -27,7 +27,11 @@ Current snapshot as of 2026-10-29.
 
 ## Current development
 
-- Active phase: Onboarding & product polish v1. The validated Search Console → Performance → automatic actions → Insights → Outcome Goals chain is complete and prepared for main.
+- Active branch: `onboarding-v1`, based on GitHub `main` at `62bf9d54b23bbf906af81e1eb2239843bd08d5b5`.
+- Active phase: onboarding and product polish using the existing Sites → Settings/install → Tracking Health → optional Outcome Goals → Performance journey; no parallel onboarding wizard is planned.
+- Settings now presents tracker installation and verification before optional integrations, explains automatic activity in owner language, and keeps the coding-assistant prompt conditional on systems already present in the customer's codebase.
+- Sites and Dashboard now expose explicit loading/error/retry and new-site guidance instead of blank states. Rendered browser QA remains pending because the Browser plugin and a project Playwright workflow are unavailable.
+- The validated Search Console → Performance → automatic actions → Insights → Outcome Goals chain remains unchanged.
 - The prior P1 Reliability & Trust sequence is deferred, not removed.
 - Tracking Health v1 implementation, migration, Settings UI, and tests are reconciled on top of the production P0 history in `3d188c8` (`feat: add tracking health v1`), with the scheduler/Hono export compatibility fix in `8b66842`.
 - Migrations through `0010_outcome_goals.sql` are applied on staging. The hourly retention cron is deployed at `17 * * * *`.
@@ -71,6 +75,8 @@ Current snapshot as of 2026-10-29.
 
 ## Remaining product gaps
 
+- Hosted landing, pricing, billing, and some dashboard copy still reflect the inherited indie-maker/revenue-first/Dodo-heavy positioning and need a focused positioning pass rather than piecemeal redesign.
+- Rendered responsive and keyboard QA remains pending at mobile, tablet, desktop, and 200% zoom widths.
 - Performance v1 has no trend chart, saved report, export, or drill-down from its summary lists.
 - Search Console data is fetched on demand and is limited to the top ten query/page rows in the owner view; there is no scheduled sync or historical cache.
 - Real OAuth/property behavior still needs staging validation after the manual Google configuration and explicit staging migration/deploy approval.

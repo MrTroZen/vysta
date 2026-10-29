@@ -26,7 +26,7 @@ export function Login({ onLogin }: { onLogin: () => void }) {
       <form onSubmit={submit} className="card w-full max-w-sm p-8">
         <Logo />
         <h1 className="mt-6 text-2xl font-semibold">Welcome back</h1>
-        <p className="mt-1 text-sm text-stone-500">Revenue-first analytics for your websites.</p>
+        <p className="mt-1 text-sm text-stone-500">Clear, privacy-focused analytics for your websites.</p>
         <label className="label mt-6" htmlFor="pw">
           Password
         </label>

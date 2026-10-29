@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { navigate, useMe } from '../App';
 import { Favicon } from '../components/Icons';
 import { Logo } from '../components/Logo';
@@ -10,13 +10,20 @@ export function Sites() {
   const { me } = useMe();
   const [sites, setSites] = useState<Site[] | null>(null);
   const [adding, setAdding] = useState(false);
+  const [error, setError] = useState('');
 
-  useEffect(() => {
-    api<Site[]>('/api/sites').then((s) => {
+  const load = useCallback(async () => {
+    setError('');
+    try {
+      const s = await api<Site[]>('/api/sites');
       setSites(s);
       if (!s.length) setAdding(true);
-    });
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Your websites could not be loaded.');
+    }
   }, []);
+
+  useEffect(() => void load(), [load]);
 
   async function logout() {
     await api('/api/auth/logout', { method: 'POST' });
@@ -25,7 +32,7 @@ export function Sites() {
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8 sm:py-12">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <Logo />
         <div className="flex items-center gap-2">
           {me.hosted && me.user && (
@@ -44,7 +51,16 @@ export function Sites() {
       </div>
 
       <h1 className="mt-10 text-2xl font-semibold">Your websites</h1>
+      {error && (
+        <div className="mt-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-900" role="alert">
+          <p>Your websites could not be loaded. {error}</p>
+          <button className="btn mt-3" onClick={() => void load()}>Try again</button>
+        </div>
+      )}
       <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {sites === null && !error && [1, 2, 3].map((item) => (
+          <div key={item} className="card h-36 animate-pulse bg-stone-100 motion-reduce:animate-none" aria-hidden="true" />
+        ))}
         {sites?.map((s) => (
           <button key={s.id} onClick={() => navigate(`/site/${s.id}`)} className="card p-5 text-left transition hover:-translate-y-0.5 hover:shadow-md">
             <div className="flex items-center gap-3">
@@ -83,15 +99,20 @@ function AddSite({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [timezone, setTimezone] = useState(Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC');
   const [currency, setCurrency] = useState('USD');
   const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (saving) return;
+    setSaving(true);
     setError('');
     try {
       const site = await api<Site>('/api/sites', { method: 'POST', json: { domain, name, timezone, currency } });
       navigate(`/site/${site.id}/settings`);
     } catch (err) {
       setError((err as Error).message);
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -99,31 +120,31 @@ function AddSite({ open, onClose }: { open: boolean; onClose: () => void }) {
     <Modal open={open} onClose={onClose} title="Add a website" width="max-w-md">
       <form onSubmit={submit} className="space-y-4">
         <div>
-          <label className="label">Domain</label>
-          <input className="input" placeholder="example.com" value={domain} onChange={(e) => setDomain(e.target.value)} autoFocus />
+          <label className="label" htmlFor="new-site-domain">Domain</label>
+          <input id="new-site-domain" className="input" placeholder="example.com" value={domain} onChange={(e) => setDomain(e.target.value)} autoFocus required />
           <p className="mt-1 text-xs text-stone-500">Subdomains (app.example.com) are tracked under the same site.</p>
         </div>
         <div>
-          <label className="label">Name</label>
-          <input className="input" placeholder="My SaaS" value={name} onChange={(e) => setName(e.target.value)} />
+          <label className="label" htmlFor="new-site-name">Website name</label>
+          <input id="new-site-name" className="input" placeholder="Acme website" value={name} onChange={(e) => setName(e.target.value)} />
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid gap-3 sm:grid-cols-2">
           <div>
-            <label className="label">Timezone</label>
-            <input className="input" value={timezone} onChange={(e) => setTimezone(e.target.value)} />
+            <label className="label" htmlFor="new-site-timezone">Timezone</label>
+            <input id="new-site-timezone" className="input" value={timezone} onChange={(e) => setTimezone(e.target.value)} required />
           </div>
           <div>
-            <label className="label">Revenue currency</label>
-            <select className="input" value={currency} onChange={(e) => setCurrency(e.target.value)}>
+            <label className="label" htmlFor="new-site-currency">Reporting currency</label>
+            <select id="new-site-currency" className="input" value={currency} onChange={(e) => setCurrency(e.target.value)}>
               {CURRENCIES.map((c) => (
                 <option key={c}>{c}</option>
               ))}
             </select>
           </div>
         </div>
-        {error && <p className="text-sm text-red-600">{error}</p>}
-        <button className="btn-dark w-full" disabled={!domain}>
-          Add website
+        {error && <p className="text-sm text-red-600" role="alert">{error}</p>}
+        <button className="btn-dark w-full" disabled={!domain || !timezone || saving}>
+          {saving ? 'Adding website…' : 'Add website'}
         </button>
       </form>
     </Modal>

@@ -94,7 +94,7 @@ export function TrackingHealth({ siteId }: { siteId: string }) {
   if (!health) {
     return (
       <section className="card p-6" aria-labelledby="tracking-health-title">
-        <h2 id="tracking-health-title" className="text-lg font-semibold">Tracking health</h2>
+        <h2 id="tracking-health-title" className="text-lg font-semibold">Installation &amp; tracking health</h2>
         <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-900" role="alert">
           <p>Tracking health could not be checked. {error}</p>
           <button className="btn mt-3" onClick={() => void load()}>Try again</button>
@@ -109,9 +109,9 @@ export function TrackingHealth({ siteId }: { siteId: string }) {
     <section className="card p-6" aria-labelledby="tracking-health-title">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 id="tracking-health-title" className="text-lg font-semibold">Tracking health</h2>
+          <h2 id="tracking-health-title" className="text-lg font-semibold">Installation &amp; tracking health</h2>
           <p className="mt-1 max-w-2xl text-sm text-stone-500">
-            Recent request diagnostics are kept as hourly totals for 30 days. They do not store rejected request bodies.
+            Visit your website after installing the script, then refresh to confirm that Vysta is receiving data.
           </p>
         </div>
         <button className="btn" disabled={loading} onClick={() => void load()}>{loading ? 'Checking…' : 'Refresh'}</button>
@@ -161,7 +161,7 @@ export function TrackingHealth({ siteId }: { siteId: string }) {
         </article>
       </div>
       <p className="mt-4 text-xs leading-relaxed text-stone-500">
-        “Working” means Vysta recently received valid data for this site. It does not prove the tracker is installed on every page.
+        “Working” means Vysta recently received valid data for this site. It does not prove the tracker is installed on every page. Diagnostics are kept as hourly totals for 30 days and do not store rejected request bodies.
       </p>
     </section>
   );

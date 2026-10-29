@@ -99,25 +99,20 @@ export function Settings({ siteId }: { siteId: string }) {
 
   return (
     <div className="mx-auto max-w-3xl space-y-5 px-4 py-8 sm:py-12">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex gap-2">
+      <header className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="flex items-center gap-2 text-xl font-semibold">
+            <Favicon domain={site.domain} size={22} /> {site.name}
+          </h1>
+          <p className="mt-1 max-w-xl text-sm text-stone-500">Install Vysta, confirm data is arriving, then review Performance. The integrations further down are optional.</p>
+        </div>
+        <nav className="flex flex-wrap gap-2" aria-label="Website">
           <button className="btn" onClick={() => navigate(`/site/${site.id}`)}>← Dashboard</button>
           <button className="btn" onClick={() => navigate(`/site/${site.id}/performance`)}>Performance</button>
-        </div>
-        <h1 className="flex items-center gap-2 font-semibold">
-          <Favicon domain={site.domain} size={22} /> {site.name}
-        </h1>
-      </div>
+        </nav>
+      </header>
 
-      <TrackingHealth siteId={site.id} />
-
-      <SearchConsoleSettings siteId={site.id} />
-
-      <OutcomeGoalsSettings siteId={site.id} />
-
-      <AiSetup site={site} origin={origin} />
-
-      <Section title="1. Install the tracking script" desc={<>Paste this in the <code>&lt;head&gt;</code> of every page on {site.domain} (and its subdomains).</>}>
+      <Section title="Install Vysta on your website" desc={<>Paste this exact script in the <code>&lt;head&gt;</code> of every page on {site.domain} (and its subdomains).</>}>
         <Code>{snippet}</Code>
         <details className="mt-4 text-sm">
           <summary className="cursor-pointer font-medium">Next.js / React example</summary>
@@ -153,7 +148,14 @@ async rewrites() {
         </p>
       </Section>
 
-      <Section title="2. Track visitor actions" desc="Phone, WhatsApp, email, and form intent are automatic. Add custom actions for anything specific to your business.">
+      <TrackingHealth siteId={site.id} />
+
+      <Section title="What Vysta tracks automatically" desc="No extra event setup is needed for the essentials. Add custom actions only for something specific to your business.">
+        <ul className="mb-4 grid gap-2 text-sm text-stone-700 sm:grid-cols-2" aria-label="Automatically tracked activity">
+          {['Page views', 'Acquisition and traffic source', 'Phone intent', 'WhatsApp intent', 'Email intent', 'Form intent'].map((item) => (
+            <li key={item} className="rounded-lg bg-stone-50 px-3 py-2">✓ {item}</li>
+          ))}
+        </ul>
         <div className="mb-4 rounded-xl bg-stone-50 p-4 text-sm text-stone-600">
           Automatic contact actions record only the action type and current page. Phone numbers, email addresses, form fields, messages, and destination links are not sent to Vysta. These are intent signals, not confirmed calls, messages, or leads.
         </div>
@@ -173,8 +175,14 @@ async rewrites() {
         <p className="mt-3 text-sm text-stone-500">Other outbound link clicks are tracked automatically. Contact destinations are excluded from outbound URL storage.</p>
       </Section>
 
+      <OutcomeGoalsSettings siteId={site.id} />
+
+      <SearchConsoleSettings siteId={site.id} />
+
+      <AiSetup site={site} origin={origin} />
+
       <Section
-        title="3. Connect Dodo Payments (revenue attribution)"
+        title="Connect Dodo Payments (optional)"
         desc="Payments are linked to the visitor who paid and credited to the source that brought them."
       >
         <ol className="list-decimal space-y-4 pl-5 text-sm">
@@ -335,10 +343,10 @@ function AiSetup({ site, origin }: { site: Site; origin: string }) {
     <section className="card border-violet-200 bg-gradient-to-br from-violet-50 to-white p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold">✨ Set up with AI</h2>
+          <h2 className="text-lg font-semibold">Optional: set up with a coding assistant</h2>
           <p className="mt-1 max-w-lg text-sm text-stone-600">
-            Copy this prompt into Claude Code, Cursor or any coding AI opened in your project. It installs the script, connects Dodo Payments
-            attribution, identifies users and adds button goals, using this site's real values. It asks you only what it can't find in your code.
+            Copy this prompt into a coding assistant opened in your project. It installs this site's tracker and can reuse authentication,
+            custom actions, or Dodo Payments only when those systems already exist in your codebase.
           </p>
         </div>
         <button
@@ -357,7 +365,7 @@ function AiSetup({ site, origin }: { site: Site; origin: string }) {
       </button>
       {open && <pre className="code mt-3 max-h-96 whitespace-pre-wrap">{prompt}</pre>}
       <p className="mt-3 text-xs text-stone-500">
-        The AI handles the code. You still connect the Dodo webhook yourself (step 3 below), because that's done in Dodo's dashboard.
+        Review the proposed code changes before accepting them. If you use Dodo Payments, its webhook is still connected manually below.
       </p>
     </section>
   );
