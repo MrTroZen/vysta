@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { navigate } from '../App';
 import { Favicon } from '../components/Icons';
 import { SearchConsoleSettings } from '../components/SearchConsoleSettings';
@@ -21,7 +21,7 @@ function Code({ children }: { children: string }) {
   const [copied, setCopied] = useState(false);
   return (
     <div className="relative">
-      <code className="code">{children}</code>
+      <code className="code pr-20">{children}</code>
       <button
         className="absolute right-2 top-2 rounded-lg bg-white/10 px-2 py-1 text-xs text-white hover:bg-white/20"
         onClick={() => {
@@ -41,10 +41,14 @@ export function Settings({ siteId }: { siteId: string }) {
   const [form, setForm] = useState<Partial<Site>>({});
   const [saved, setSaved] = useState('');
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
   const origin = window.location.origin;
 
-  useEffect(() => {
-    api<Site>(`/api/sites/${siteId}`).then((s) => {
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const s = await api<Site>(`/api/sites/${siteId}`);
       setSite(s);
       setForm({
         name: s.name,
@@ -54,8 +58,14 @@ export function Settings({ siteId }: { siteId: string }) {
         dodo_webhook_secret: s.dodo_webhook_secret ?? '',
         dodo_product_ids: s.dodo_product_ids ?? '',
       });
-    });
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Website settings could not be loaded.');
+    } finally {
+      setLoading(false);
+    }
   }, [siteId]);
+
+  useEffect(() => void load(), [load]);
 
   async function save(patch: Partial<Site>, msg = 'Saved') {
     setError('');
@@ -69,7 +79,21 @@ export function Settings({ siteId }: { siteId: string }) {
     }
   }
 
-  if (!site) return null;
+  if (!site) {
+    return (
+      <main className="mx-auto max-w-3xl px-4 py-8 sm:py-12">
+        {loading ? (
+          <section className="card h-40 animate-pulse bg-stone-100 motion-reduce:animate-none" aria-label="Loading website settings" />
+        ) : (
+          <section className="card p-6" role="alert">
+            <h1 className="text-lg font-semibold">Settings could not be loaded</h1>
+            <p className="mt-2 text-sm text-red-700">{error}</p>
+            <button className="btn mt-4" onClick={() => void load()}>Try again</button>
+          </section>
+        )}
+      </main>
+    );
+  }
   const snippet = `<script\n  defer\n  data-website-id="${site.id}"\n  src="${origin}/js/script.js"\n></script>`;
   const webhookUrl = `${origin}/api/webhooks/dodo/${site.id}`;
 
@@ -163,7 +187,7 @@ async rewrites() {
           </li>
           <li>
             Paste the webhook's <b>signing secret</b> (starts with <code>whsec_</code>):
-            <div className="mt-2 flex gap-2">
+            <div className="mt-2 flex flex-col gap-2 sm:flex-row">
               <input
                 className="input font-mono"
                 type="password"
@@ -171,7 +195,7 @@ async rewrites() {
                 value={form.dodo_webhook_secret ?? ''}
                 onChange={(e) => setForm({ ...form, dodo_webhook_secret: e.target.value })}
               />
-              <button className="btn-dark" onClick={() => save({ dodo_webhook_secret: form.dodo_webhook_secret ?? '' }, 'Webhook secret saved')}>
+              <button className="btn-dark sm:shrink-0" onClick={() => save({ dodo_webhook_secret: form.dodo_webhook_secret ?? '' }, 'Webhook secret saved')}>
                 Save
               </button>
             </div>
@@ -180,14 +204,14 @@ async rewrites() {
           <li>
             <b>Selling more than one product from the same Dodo account?</b> Dodo sends every payment to every webhook, so list this
             site's product ids (from Dodo → Products) to count only those. Leave empty if this account only sells this site's products.
-            <div className="mt-2 flex gap-2">
+            <div className="mt-2 flex flex-col gap-2 sm:flex-row">
               <input
                 className="input font-mono"
                 placeholder="pdt_abc123, pdt_def456"
                 value={form.dodo_product_ids ?? ''}
                 onChange={(e) => setForm({ ...form, dodo_product_ids: e.target.value })}
               />
-              <button className="btn-dark" onClick={() => save({ dodo_product_ids: form.dodo_product_ids ?? '' }, 'Products saved')}>
+              <button className="btn-dark sm:shrink-0" onClick={() => save({ dodo_product_ids: form.dodo_product_ids ?? '' }, 'Products saved')}>
                 Save
               </button>
             </div>
@@ -215,24 +239,24 @@ const session = await dodo.checkoutSessions.create({
               automatically when clicked, but it doesn't always reach the payment, so also set the return URL (last step below). In the browser you can also read the ids with <code>window.minilytics.attribution()</code>.
             </p>
             <p className="mt-2 text-stone-500">
-              If metadata is missing, Minilytics still links the payment when the buyer lands back on your site, when their email matches a
+              If metadata is missing, Vysta still links the payment when the buyer lands back on your site, when their email matches a
               visitor you <code>identify()</code>, when it's a renewal of an earlier payment, or when exactly one visitor clicked a checkout link
               shortly before paying. The Journey tab shows how each payment was matched.
             </p>
           </li>
           <li>
             <b>Recommended:</b> set your product's <b>return / redirect URL</b> in Dodo to a page on your site, e.g.{' '}
-            <code>https://{site.domain}/thanks</code>. Dodo adds <code>?payment_id=…</code> to it, which lets Minilytics link the payment to
+            <code>https://{site.domain}/thanks</code>. Dodo adds <code>?payment_id=…</code> to it, which lets Vysta link the payment to
             the exact visitor even when metadata doesn't come through (for example with payment links).
           </li>
         </ol>
       </Section>
 
       <Section title="Other payment providers / server-side API" desc="Send payments or goals from your backend using this site's API key.">
-        <div className="mb-3 flex gap-2">
+        <div className="mb-3 flex flex-col gap-2 sm:flex-row">
           <input className="input font-mono" readOnly value={site.api_key} />
           <button
-            className="btn"
+            className="btn sm:shrink-0"
             onClick={async () => {
               if (!confirm('Rotate the API key? The old key stops working immediately.')) return;
               const r = await api<{ api_key: string }>(`/api/sites/${siteId}/rotate-key`, { method: 'POST' });
@@ -281,7 +305,7 @@ curl -X POST ${origin}/api/v1/goals \\
       </Section>
 
       {(saved || error) && (
-        <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 rounded-xl px-4 py-2 text-sm text-white shadow-lg ${error ? 'bg-red-600' : 'bg-ink'}`}>
+        <div role={error ? 'alert' : 'status'} className={`fixed bottom-6 left-1/2 max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded-xl px-4 py-2 text-center text-sm text-white shadow-lg ${error ? 'bg-red-600' : 'bg-ink'}`}>
           {error || saved}
         </div>
       )}

@@ -22,7 +22,7 @@ function MetricCard({ label, current, previous }: { label: string; current: numb
 }
 
 function ListCard({ title, description, rows, kind }: { title: string; description: string; rows: BreakdownRow[] | null; kind: 'source' | 'page' | 'goal' | 'outcome' }) {
-  return <section className="card min-w-0 p-5"><h2 className="text-lg font-semibold">{title}</h2><p className="mt-1 text-sm text-stone-500">{description}</p>{!rows ? <div className="mt-5 space-y-3" aria-label={`Loading ${title}`}>{[1, 2, 3].map((item) => <div key={item} className="h-10 animate-pulse rounded-xl bg-stone-100" />)}</div> : rows.length === 0 ? <p className="mt-6 rounded-xl bg-stone-50 p-4 text-sm text-stone-500">No {kind === 'goal' ? 'actions' : kind === 'outcome' ? 'confirmed outcomes' : kind === 'page' ? 'pages' : 'traffic sources'} in this period.</p> : <div className="mt-4 overflow-x-auto" role="region" aria-label={title} tabIndex={0}><table className="w-full min-w-[360px] text-sm"><thead className="text-left text-xs uppercase tracking-wide text-stone-400"><tr><th className="pb-2 font-medium">{kind === 'goal' ? 'Action' : kind === 'outcome' ? 'Outcome' : kind === 'page' ? 'Page' : 'Source'}</th><th className="pb-2 text-right font-medium">Visitors</th>{kind !== 'source' && <th className="pb-2 text-right font-medium">{kind === 'goal' ? 'Times' : kind === 'outcome' ? 'Completions' : 'Views'}</th>}</tr></thead><tbody>{rows.slice(0, 8).map((row, index) => <tr key={`${row.label}-${index}`} className="border-t border-stone-100"><th scope="row" className="max-w-[20rem] py-3 pr-4 text-left font-medium"><span className="block truncate" title={row.label ?? undefined}>{kind === 'goal' ? actionLabel(row.label) : row.label || (kind === 'source' ? 'Direct / unknown' : 'Untitled')}</span></th><td className="py-3 text-right tabular-nums">{row.visitors.toLocaleString()}</td>{kind !== 'source' && <td className="py-3 text-right tabular-nums">{(row.pageviews ?? 0).toLocaleString()}</td>}</tr>)}</tbody></table></div>}</section>;
+  return <section className="card min-w-0 p-5"><h2 className="text-lg font-semibold">{title}</h2><p className="mt-1 text-sm text-stone-500">{description}</p>{!rows ? <div className="mt-5 space-y-3" aria-label={`Loading ${title}`}>{[1, 2, 3].map((item) => <div key={item} className="h-10 animate-pulse rounded-xl bg-stone-100 motion-reduce:animate-none" />)}</div> : rows.length === 0 ? <p className="mt-6 rounded-xl bg-stone-50 p-4 text-sm text-stone-500">No {kind === 'goal' ? 'actions' : kind === 'outcome' ? 'confirmed outcomes' : kind === 'page' ? 'pages' : 'traffic sources'} in this period.</p> : <div className="mt-4 overflow-x-auto" role="region" aria-label={title} tabIndex={0}><table className="w-full min-w-[360px] text-sm"><thead className="text-left text-xs uppercase tracking-wide text-stone-400"><tr><th className="pb-2 font-medium">{kind === 'goal' ? 'Action' : kind === 'outcome' ? 'Outcome' : kind === 'page' ? 'Page' : 'Source'}</th><th className="pb-2 text-right font-medium">Visitors</th>{kind !== 'source' && <th className="pb-2 text-right font-medium">{kind === 'goal' ? 'Times' : kind === 'outcome' ? 'Completions' : 'Views'}</th>}</tr></thead><tbody>{rows.slice(0, 8).map((row, index) => <tr key={`${row.label}-${index}`} className="border-t border-stone-100"><th scope="row" className="max-w-[20rem] py-3 pr-4 text-left font-medium"><span className="block truncate" title={row.label ?? undefined}>{kind === 'goal' ? actionLabel(row.label) : row.label || (kind === 'source' ? 'Direct / unknown' : 'Untitled')}</span></th><td className="py-3 text-right tabular-nums">{row.visitors.toLocaleString()}</td>{kind !== 'source' && <td className="py-3 text-right tabular-nums">{(row.pageviews ?? 0).toLocaleString()}</td>}</tr>)}</tbody></table></div>}</section>;
 }
 
 function OutcomePages({ rows }: { rows: BreakdownRow[] | null }) {
@@ -53,7 +53,7 @@ function SearchList({ title, rows, dimension }: { title: string; rows: Extract<S
 
 function SearchConsoleSection({ view, siteId, retry }: { view: SearchConsoleView; siteId: string; retry: () => void }) {
   let content: ReactNode;
-  if (view.state === 'loading') content = <div className="h-20 animate-pulse rounded-xl bg-stone-100" aria-label="Loading Google Search" />;
+  if (view.state === 'loading') content = <div className="h-20 animate-pulse rounded-xl bg-stone-100 motion-reduce:animate-none" aria-label="Loading Google Search" />;
   else if (view.state === 'not-connected') content = <div className="rounded-xl bg-stone-50 p-4"><p className="font-medium">See how people find you on Google</p><p className="mt-1 text-sm text-stone-500">Connect Search Console to add clicks, visibility, searches, and top search pages.</p><button className="btn-dark mt-3" onClick={() => navigate(`/site/${siteId}/settings`)}>Connect in Settings</button></div>;
   else if (view.state === 'needs-property') content = <div className="rounded-xl bg-stone-50 p-4"><p className="font-medium">Choose your website property</p><p className="mt-1 text-sm text-stone-500">Your Google account is connected. Select the website you want to report on.</p><button className="btn mt-3" onClick={() => navigate(`/site/${siteId}/settings`)}>Choose property</button></div>;
   else if (view.state === 'reconnect') content = <div className="rounded-xl border border-amber-200 bg-amber-50 p-4"><p className="font-medium text-amber-950">Reconnect Google Search Console</p><p className="mt-1 text-sm text-amber-800">Google access needs to be renewed before search data can update.</p><button className="btn-dark mt-3" onClick={() => navigate(`/site/${siteId}/settings`)}>Reconnect in Settings</button></div>;
@@ -66,9 +66,9 @@ function SearchConsoleSection({ view, siteId, retry }: { view: SearchConsoleView
 export function Performance({ siteId }: { siteId: string }) {
   const [q, update] = useQueryState();
   const [reloadKey, setReloadKey] = useState(0);
-  const { data: sites } = useApi<Site[]>('/api/sites');
+  const { data: sites, error: sitesError } = useApi<Site[]>('/api/sites', reloadKey);
   const site = sites?.find((candidate) => candidate.id === siteId);
-  const { data: overview, error: overviewError, loading } = useApi<Overview>(site ? `/api/sites/${siteId}/overview?${qs(q)}` : null, reloadKey);
+  const { data: overview, error: overviewRequestError, loading } = useApi<Overview>(site ? `/api/sites/${siteId}/overview?${qs(q)}` : null, reloadKey);
   const sourcesRequest = useApi<BreakdownRow[]>(site ? `/api/sites/${siteId}/breakdown?${qs(q, { dim: 'source', limit: 100 })}` : null, reloadKey);
   const pagesRequest = useApi<BreakdownRow[]>(site ? `/api/sites/${siteId}/breakdown?${qs(q, { dim: 'page', limit: 100 })}` : null, reloadKey);
   const actionsRequest = useApi<BreakdownRow[]>(site ? `/api/sites/${siteId}/breakdown?${qs(q, { dim: 'goal', limit: 100 })}` : null, reloadKey);
@@ -79,12 +79,12 @@ export function Performance({ siteId }: { siteId: string }) {
   const previousPagesRequest = useApi<BreakdownRow[]>(site ? `/api/sites/${siteId}/breakdown?${qs(q, { dim: 'page', limit: 100, compare: 'previous' })}` : null, reloadKey);
   const previousActionsRequest = useApi<BreakdownRow[]>(site ? `/api/sites/${siteId}/breakdown?${qs(q, { dim: 'goal', limit: 100, compare: 'previous' })}` : null, reloadKey);
   const previousActionPagesRequest = useApi<BreakdownRow[]>(site ? `/api/sites/${siteId}/breakdown?${qs(q, { dim: 'action_page', limit: 100, compare: 'previous' })}` : null, reloadKey);
-  const sources = sourcesRequest.data;
-  const pages = pagesRequest.data;
-  const actions = actionsRequest.data;
-  const actionPages = actionPagesRequest.data;
-  const outcomes = outcomesRequest.data;
-  const outcomePages = outcomePagesRequest.data;
+  const sources = sourcesRequest.error ? [] : sourcesRequest.data;
+  const pages = pagesRequest.error ? [] : pagesRequest.data;
+  const actions = actionsRequest.error ? [] : actionsRequest.data;
+  const actionPages = actionPagesRequest.error ? [] : actionPagesRequest.data;
+  const outcomes = outcomesRequest.error ? [] : outcomesRequest.data;
+  const outcomePages = outcomePagesRequest.error ? [] : outcomePagesRequest.data;
   const { data: searchStatus, error: searchStatusError } = useApi<SearchConsoleStatus>(site ? `/api/sites/${siteId}/integrations/search-console/status` : null, reloadKey);
   const [searchView, setSearchView] = useState<SearchConsoleView>({ state: 'loading' });
 
@@ -98,11 +98,14 @@ export function Performance({ siteId }: { siteId: string }) {
     return () => { active = false; };
   }, [searchStatus, searchStatusError, overview, site, siteId, reloadKey]);
 
+  const retry = () => setReloadKey((key) => key + 1);
+  if (sitesError) return <main className="mx-auto max-w-xl px-4 py-10"><div className="card p-6" role="alert"><h1 className="text-lg font-semibold">Performance could not be loaded</h1><p className="mt-2 text-sm text-red-700">{sitesError}</p><button className="btn mt-4" onClick={retry}>Try again</button></div></main>;
   if (sites && !site) return <div className="p-10 text-center">Website not found. <button className="underline" onClick={() => navigate('/')}>Back to websites</button></div>;
   if (!site) return null;
-  const retry = () => setReloadKey((key) => key + 1);
+  const breakdownError = [sourcesRequest, pagesRequest, actionsRequest, actionPagesRequest, outcomesRequest, outcomePagesRequest].find((request) => request.error)?.error;
+  const overviewError = overviewRequestError || breakdownError;
   const insightRequests = [sourcesRequest, pagesRequest, actionsRequest, actionPagesRequest, previousSourcesRequest, previousPagesRequest, previousActionsRequest, previousActionPagesRequest];
-  const insightDataReady = Boolean(overview) && insightRequests.every((request) => request.data !== null || request.error !== null);
+  const insightDataReady = Boolean(overview) && !breakdownError && insightRequests.every((request) => request.data !== null || request.error !== null);
   const insights = insightDataReady && overview ? buildInsights({
     current: overview.current,
     previous: overview.previous,

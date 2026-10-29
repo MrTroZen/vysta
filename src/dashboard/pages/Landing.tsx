@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Logo } from '../components/Logo';
 import { api, type PlanInfo } from '../lib/api';
 
-export const GITHUB_URL = 'https://github.com/surendrapandar/minilytics';
+export const GITHUB_URL = 'https://github.com/MrTroZen/vysta';
 
 export function usePlan() {
   const [plan, setPlan] = useState<PlanInfo | null>(null);
@@ -100,7 +100,7 @@ export function Landing() {
           See which tweet, post or AI chat <span className="text-revenue">made you money</span>.
         </h1>
         <p className="mx-auto mt-6 max-w-2xl text-lg text-stone-600 sm:text-xl">
-          Minilytics follows every visitor from the first click to the payment, so you know exactly what to post more of. Unlimited
+          Vysta follows every visitor from the first click to the payment, so you know exactly what to post more of. Unlimited
           websites and events, {price}{per}.
         </p>
         <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
@@ -115,7 +115,7 @@ export function Landing() {
       </section>
 
       <section className="relative mx-auto max-w-6xl px-4">
-        <Shot src="/landing/dashboard.png" alt="Minilytics dashboard: visitors, revenue and conversion rate" />
+        <Shot src="/landing/dashboard.png" alt="Vysta dashboard: visitors, revenue and conversion rate" />
         <div className="absolute -left-1 top-[42%] hidden rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm shadow-xl md:block lg:-left-6">
           <div className="text-stone-500">Revenue from</div>
           <div className="font-semibold">𝕏 launch-tweet</div>
@@ -204,14 +204,14 @@ export function Landing() {
         id="compare"
         eyebrow="Compare"
         title={<>Same price. <span className="text-revenue">No limits.</span></>}
-        sub="Most analytics tools charge by traffic and by website. Minilytics doesn’t."
+        sub="Most analytics tools charge by traffic and by website. Vysta doesn’t."
       >
         <div className="card mx-auto max-w-3xl overflow-x-auto p-2">
           <table className="w-full min-w-[520px] text-left">
             <thead>
               <tr className="text-sm text-stone-500">
                 <th className="p-4 font-medium" />
-                <th className="rounded-t-xl bg-revenueSoft/40 p-4 font-semibold text-ink">Minilytics</th>
+                <th className="rounded-t-xl bg-revenueSoft/40 p-4 font-semibold text-ink">Vysta</th>
                 <th className="p-4 font-medium">DataFast Starter</th>
                 <th className="p-4 font-medium">Plausible Starter</th>
               </tr>
@@ -243,7 +243,7 @@ export function Landing() {
       <section className="mx-auto mt-28 max-w-3xl px-4">
         <div className="card p-8 sm:p-10">
           <p className="text-xl leading-relaxed text-stone-700">
-            “I built Minilytics because I had no idea which of my posts actually sold my apps. Every analytics tool showed me visitors.
+            “I built Vysta because I had no idea which of my posts actually sold my apps. Every analytics tool showed me visitors.
             None showed me money. Now I run my own products on it, and I post more of what pays.”
           </p>
           <div className="mt-6 flex items-center gap-3">
@@ -312,7 +312,7 @@ export function Landing() {
             ['What about ad blockers?', 'You can serve the script from your own domain with a one-line rewrite, so blockers don’t see it. Payments are always recorded either way, because they come from the webhook.'],
             ['Do I need a cookie banner?', 'It uses two first-party cookies and no IP storage. Whether you need a consent banner depends on your visitors’ country; in the EU you may.'],
             ['What happens after the founding spots are gone?', 'The price goes up for new customers.'],
-            ['Can I self-host it instead?', 'Yes. Minilytics is open source (MIT), and you can deploy it free on your own Cloudflare account from GitHub.'],
+            ['Can I self-host it instead?', 'Yes. Vysta is open source (MIT), and you can deploy it free on your own Cloudflare account from GitHub.'],
           ].map(([q, a]) => (
             <details key={q} className="card group p-5">
               <summary className="flex cursor-pointer list-none items-center justify-between font-medium">

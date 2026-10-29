@@ -121,14 +121,14 @@ export function OutcomeGoalsSettings({ siteId }: { siteId: string }) {
       )}
 
       <div className="mt-5" aria-live="polite">
-        {goals === null && !error && <div className="space-y-3" aria-label="Loading outcome goals">{[1, 2].map((item) => <div key={item} className="h-16 animate-pulse rounded-xl bg-stone-100" />)}</div>}
+        {goals === null && !error && <div className="space-y-3" aria-label="Loading outcome goals">{[1, 2].map((item) => <div key={item} className="h-16 animate-pulse rounded-xl bg-stone-100 motion-reduce:animate-none" />)}</div>}
         {goals?.length === 0 && <div className="rounded-xl bg-stone-50 p-4 text-sm text-stone-600">No confirmed outcomes configured yet. Add a success or confirmation page to get started.</div>}
         {goals && goals.length > 0 && (
           <ul className="divide-y divide-stone-100">
             {goals.map((goal) => (
               <li key={goal.id} className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0">
-                  <div className="flex items-center gap-2"><span className="font-medium">{goal.name}</span><span className={`rounded-full px-2 py-0.5 text-xs ${goal.enabled ? 'bg-emerald-50 text-emerald-700' : 'bg-stone-100 text-stone-500'}`}>{goal.enabled ? 'Active' : 'Paused'}</span></div>
+                  <div className="flex flex-wrap items-center gap-2"><span className="min-w-0 break-words font-medium">{goal.name}</span><span className={`shrink-0 rounded-full px-2 py-0.5 text-xs ${goal.enabled ? 'bg-emerald-50 text-emerald-700' : 'bg-stone-100 text-stone-500'}`}>{goal.enabled ? 'Active' : 'Paused'}</span></div>
                   <p className="mt-1 truncate text-sm text-stone-500"><span className="font-medium text-stone-600">{goal.matchType === 'exact' ? 'Exactly' : 'Starts with'}</span> {goal.path}</p>
                 </div>
                 <div className="flex shrink-0 flex-wrap gap-2">

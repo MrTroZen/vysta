@@ -8,20 +8,20 @@ Build Vysta into a trustworthy, privacy-focused analytics platform that gives sm
 
 - P0 — Critical Accuracy: completed, verified, and deployed to production.
 - Tracking Health v1: reviewed, verified, staged, and reconciled into source control. It distinguishes tracking requests from recorded analytics events, keeps unused server goals neutral, retains 720 hourly buckets, and cleans up health data with site deletion.
+- The Search Console backend, Performance v1, automatic lead/action tracking, What Changed insights, and No-Code Outcome Goals v1 chain is verified and staged through `0010_outcome_goals.sql`.
 
 ## Current phase
 
-No-Code Outcome Goals v1 — URL/path-based confirmed outcomes on top of Insights v1
+Onboarding & product polish v1
 
 ## Objective and boundaries
 
-Let owners define confirmed outcomes from success-page paths without adding site-specific JavaScript.
+Make Vysta easier to adopt and verify without expanding the analytics model.
 
-- Reuse goal events with site-scoped exact and segment-aware starts-with path rules.
-- Keep query strings, fragments, form data, and destination/contact details out of rule matching.
-- Count each configured outcome once per visit and report it separately from intent/actions.
-- Provide Settings create/edit/pause/delete controls and Performance totals, names, pages, and previous-period comparison.
-- Do not add click-rule builders, CRM/revenue attribution, funnels, AI, GA4, customer-specific rules, Google configuration, or deployment work.
+- Improve first-run guidance, installation confidence, empty/error states, and product-facing copy.
+- Complete rendered desktop/mobile QA and address only concrete usability defects.
+- Keep the validated analytics, site-isolation, goal, acquisition, and outcome semantics unchanged.
+- Do not add GA4, AI insights, exports, reports, funnels, or another core analytics feature in this phase.
 
 ## Search Console v1 reference architecture
 

@@ -1,6 +1,6 @@
 # Vysta Status
 
-Current snapshot as of 2026-10-28.
+Current snapshot as of 2026-10-29.
 
 ## Recorded production state
 
@@ -11,6 +11,8 @@ Current snapshot as of 2026-10-28.
 
 ## Verification
 
+- The complete milestone chain through No-Code Outcome Goals v1 was deployed to staging at source commit `f441be93b0e9b16c7ee899a6440c678ca7b9ea6b`. Staging D1 has migrations `0001` through `0010` in order, runtime canaries passed, and temporary canary data was removed. Staging Worker version: `8c225489-2251-4e4b-a03c-99582e16989a`.
+- Pre-merge polish updates Vysta product-facing branding and hardens obvious Settings, Performance, Tracking Health, and Outcome Goals loading/error/responsive states. Rendered browser QA remains pending because the Browser plugin and a project Playwright workflow are unavailable.
 - No-Code Outcome Goals v1 passed `npm run verify`: 149 tests across 14 test files, typecheck, and the production dashboard build. Focused outcome/action/SPA/reporting verification covered 79 tests across ten files. Rendered browser QA remains pending because browser access was unavailable and this worktree has no Playwright installation.
 - What Changed Insights v1 passed `npm run verify`: 143 tests across 13 test files, typecheck, and the production dashboard build. Focused insight/reporting verification covered 29 tests across four files without Google credentials or external calls. Rendered browser QA remains pending because this worktree has no Playwright setup and the Browser plugin was unavailable.
 - The reconciled Performance v1 and Lead & Action Tracking v1 branch passed `npm run verify`: 130 tests across 12 test files, typecheck, and the production dashboard build. Tracker, ingestion, server-goal, reporting-time, Search Console composition, and stable action-model coverage use local mocks and fixtures; no customer site or external service is required.
@@ -25,10 +27,10 @@ Current snapshot as of 2026-10-28.
 
 ## Current development
 
-- Active phase: No-Code Outcome Goals v1 is implemented and verified locally on top of Insights v1.
+- Active phase: Onboarding & product polish v1. The validated Search Console → Performance → automatic actions → Insights → Outcome Goals chain is complete and prepared for main.
 - The prior P1 Reliability & Trust sequence is deferred, not removed.
 - Tracking Health v1 implementation, migration, Settings UI, and tests are reconciled on top of the production P0 history in `3d188c8` (`feat: add tracking health v1`), with the scheduler/Hono export compatibility fix in `8b66842`.
-- Migration `0008_tracking_health.sql` is applied on staging. The hourly retention cron is deployed at `17 * * * *`.
+- Migrations through `0010_outcome_goals.sql` are applied on staging. The hourly retention cron is deployed at `17 * * * *`.
 - Production remains on the P0 release; Tracking Health has not been deployed or migrated there.
 
 ## Insights v1 implementation
@@ -64,10 +66,8 @@ Current snapshot as of 2026-10-28.
 
 ## Git state
 
-- Performance v1 and Lead & Action Tracking v1 are reconciled on the isolated `performance-v1` branch based on Search Console v1 commit `255091e`.
-- Insights v1 is implemented on the focused `insights-v1` branch from Performance v1 commit `052c790`.
-- Outcome Goals v1 is implemented on `outcome-goals-v1` from Insights v1 commit `545e2ca`.
-- The branch is not merged to `main`; no staging or production deployment was performed.
+- The milestone history remains linear from Search Console v1 (`255091e`) through Outcome Goals v1 (`f441be9`), followed only by focused pre-merge polish.
+- Staging is deployed and validated. Production has not been migrated or deployed.
 
 ## Remaining product gaps
 
@@ -84,4 +84,4 @@ Current snapshot as of 2026-10-28.
 | Staging | `vysta-staging` | `vysta-staging` | `https://vysta-staging.vysta.workers.dev` |
 | Production | `vysta-production` | `vysta-production` | `https://vysta-production.vysta.workers.dev` |
 
-Staging Worker version: `b4f5f77f-a830-4ca4-b1c0-ae6cc2bd2f35`.
+Staging Worker version: `8c225489-2251-4e4b-a03c-99582e16989a`.

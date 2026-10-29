@@ -16,7 +16,7 @@ export function InsightsPanel({ insights }: { insights: Insight[] | null }) {
 
       {insights === null ? (
         <div className="mt-4 grid gap-3 sm:grid-cols-2" aria-label="Loading performance changes">
-          {[1, 2].map((item) => <div key={item} className="h-24 animate-pulse rounded-xl bg-stone-100" />)}
+          {[1, 2].map((item) => <div key={item} className="h-24 animate-pulse rounded-xl bg-stone-100 motion-reduce:animate-none" />)}
         </div>
       ) : insights.length === 0 ? (
         <div className="mt-4 rounded-xl bg-stone-50 p-4">

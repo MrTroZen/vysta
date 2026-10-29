@@ -24,10 +24,10 @@ export function Legal({ page }: { page: 'terms' | 'privacy' | 'refund' }) {
           <>
             <h1>Terms of Service</h1>
             <p className="text-sm text-stone-500">Last updated {UPDATED}</p>
-            <p>By using Minilytics ("the service") you agree to these terms.</p>
+            <p>By using Vysta ("the service") you agree to these terms.</p>
             <h2>The service</h2>
             <p>
-              Minilytics provides website analytics and revenue attribution. You add a tracking script to websites you own or are allowed
+              Vysta provides website analytics and revenue attribution. You add a tracking script to websites you own or are allowed
               to manage, and you can connect a payment provider to see which traffic sources lead to payments.
             </p>
             <h2>Your account</h2>
@@ -88,7 +88,7 @@ export function Legal({ page }: { page: 'terms' | 'privacy' | 'refund' }) {
             <h1>Refund Policy</h1>
             <p className="text-sm text-stone-500">Last updated {UPDATED}</p>
             <p>
-              If Minilytics isn't right for you, email {contact} within 14 days of your first payment for a full refund, no questions
+              If Vysta isn't right for you, email {contact} within 14 days of your first payment for a full refund, no questions
               asked.
             </p>
             <p>

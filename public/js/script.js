@@ -1,4 +1,4 @@
-/*! Minilytics tracker — <script defer data-website-id="SITE_ID" src="https://YOUR-HOST/js/script.js"></script> */
+/*! Vysta tracker — <script defer data-website-id="SITE_ID" src="https://YOUR-HOST/js/script.js"></script> */
 (function () {
   'use strict';
   var w = window, d = document, loc = w.location, nav = w.navigator;

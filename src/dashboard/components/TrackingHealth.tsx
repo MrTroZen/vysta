@@ -117,6 +117,12 @@ export function TrackingHealth({ siteId }: { siteId: string }) {
         <button className="btn" disabled={loading} onClick={() => void load()}>{loading ? 'Checking…' : 'Refresh'}</button>
       </div>
 
+      {error && (
+        <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-900" role="alert">
+          Tracking health could not be refreshed. {error}
+        </div>
+      )}
+
       <div className="mt-5 grid gap-4 lg:grid-cols-2">
         <article className="rounded-2xl border border-stone-200 p-4 sm:p-5">
           <div className="flex flex-wrap items-center justify-between gap-2">

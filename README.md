@@ -1,4 +1,4 @@
-# Minilytics
+# Vysta
 
 Revenue-first web analytics for your own websites, inspired by DataFast. It shows where visitors came from (which
 tweet, article, Google page or AI assistant), what they did, and **which source made you money**. It runs on
@@ -119,7 +119,7 @@ At 5–10k visitors a month you'll use a few percent of this. If you outgrow it,
 
 ## Run it as a hosted SaaS (optional)
 
-By default Minilytics is single-user with a password. Set the Google values below and it becomes a hosted product:
+By default Vysta is single-user with a password. Set the Google values below and it becomes a hosted product:
 a landing page with pricing, **Sign in with Google**, a paid plan through Dodo Payments, and every customer sees only
 their own sites. Tracking stops (quietly) for sites whose owner's plan has ended.
 
@@ -184,12 +184,12 @@ Using Dodo **payment links**? The script adds `metadata_ml_visitor_id` / `metada
 `checkout.dodopayments.com` link when it's clicked. That metadata doesn't always reach the payment, so also do step 3.
 
 3. Recommended: set the checkout's return / redirect URL to a page on your site (e.g. `/thanks`) that loads the
-   script. Dodo adds `?payment_id=…` to it, and Minilytics uses that to link the payment to the exact visitor even when
+   script. Dodo adds `?payment_id=…` to it, and Vysta uses that to link the payment to the exact visitor even when
    metadata doesn't come through.
 
 **How credit is given:** a payment goes to the paying visitor's last visit that came from a real source (last non-direct
 touch). So "clicked a tweet, came back directly 17 days later and paid" is credited to the tweet. If metadata is
-missing, Minilytics tries, in order: the return page (`?payment_id=`), an earlier payment by the same customer
+missing, Vysta tries, in order: the return page (`?payment_id=`), an earlier payment by the same customer
 (renewals), an email you `identify()`'d, and finally checkout timing (used only when exactly one visitor clicked a Dodo
 checkout link in the 3 hours before the payment). The Journey tab shows how each payment was matched, and **Try
 matching again** re-runs this for older payments.
